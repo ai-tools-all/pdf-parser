@@ -1,6 +1,6 @@
 # in heuristics/spacing.py
 from typing import Dict, Any, Optional
-from data_models import AnalysisContext
+from qna_orchestrator.qna_heuristics.data_models import AnalysisContext
 
 def analyze_vertical_break(context: AnalysisContext) -> Optional[Dict[str, Any]]:
     """Identifies if a block is preceded by a large vertical gap."""

@@ -6,13 +6,13 @@ import importlib
 import statistics
 from copy import deepcopy
 from typing import Dict, Any, List, Optional
-from config import DEFAULT_CONFIG
-from data_models import Document, MCQ, TextBlock, AnalysisContext
-from pdf_parser import PDFParser
+from qna_orchestrator.qna_heuristics.config import get_config
+from qna_orchestrator.qna_heuristics.pdf_parser import PDFParser
+from qna_orchestrator.qna_heuristics.data_models import Document, MCQ, TextBlock, AnalysisContext
 
 class Orchestrator:
     def __init__(self, config_overrides: Optional[Dict] = None):
-        self.config = deepcopy(DEFAULT_CONFIG)
+        self.config = deepcopy(get_config())
         if config_overrides:
             # A more robust implementation would merge nested dicts
             self.config.update(config_overrides)
@@ -106,6 +106,7 @@ class Orchestrator:
 class StructureAssembler:
     def __init__(self, config):
         self.config = config
+        self.last_option_key = None
 
     def _get_analysis(self, block: TextBlock, heuristic_name: str, key: str, default=None):
         for result in block.analysis_results:
@@ -113,87 +114,121 @@ class StructureAssembler:
                 return result.get(key, default)
         return default
 
-    def _is_question_start(self, block: TextBlock) -> bool:
+    def _is_question_start(self, block: TextBlock, current_mcq: Optional[MCQ]) -> bool:
         is_break = self._get_analysis(block, "vertical_break", "is_break", False)
         pattern_type = self._get_analysis(block, "pattern_match", "type")
         is_indented = self._get_analysis(block, "indentation", "is_indented", False)
-        
-        # A true question start should have a vertical break and the right pattern,
-        # but it should NOT be indented. Indented numbered lists are part of the question body.
-        return is_break and pattern_type == "question_start" and not is_indented
+        is_potential_start = is_break and pattern_type == "question_start" and not is_indented
+        if not is_potential_start:
+            return False
+        q_num = self._get_analysis(block, "pattern_match", "value")
+        if current_mcq and q_num == current_mcq.question_number:
+            return False
+        return True
+
+    def _merge_mcqs(self, mcqs: List[MCQ]) -> List[MCQ]:
+        merged_mcqs_dict = {}
+        for mcq in mcqs:
+            q_num = mcq.question_number
+            if q_num not in merged_mcqs_dict:
+                merged_mcqs_dict[q_num] = mcq
+            else:
+                existing_mcq = merged_mcqs_dict[q_num]
+                if mcq.question_text:
+                    existing_mcq.question_text += f" {mcq.question_text.strip()}"
+                existing_mcq.options.update(mcq.options)
+                if mcq.answer:
+                    existing_mcq.answer = mcq.answer
+                if mcq.explanation:
+                    if existing_mcq.explanation:
+                        existing_mcq.explanation += f" {mcq.explanation.strip()}"
+                    else:
+                        existing_mcq.explanation = mcq.explanation.strip()
+        return list(merged_mcqs_dict.values())
 
     def assemble(self, doc: Document) -> List[MCQ]:
-        all_blocks = []
-        for page in doc.pages:
-            all_blocks.extend(page.left_column_blocks)
-            all_blocks.extend(page.right_column_blocks)
-        # Re-sort globally to handle content flowing across columns/pages
-        all_blocks.sort(key=lambda b: (b.page_number, b.bbox[1], b.bbox[0]))
-        
+        """
+        Assembles the final list of MCQs from the analyzed document.
+        This version processes each column on each page separately to handle multi-column layouts.
+        """
         mcqs = []
-        current_mcq = None
-        current_part = "question" # states: question, option, explanation
-        print("\n--- Assembling MCQs with Detailed Logging ---")
 
-        for block in all_blocks:
-            if self._is_question_start(block):
-                if current_mcq:
-                    print(f"--- Finalizing MCQ {current_mcq.question_number} ---")
-                    mcqs.append(current_mcq)
-                
-                q_num = self._get_analysis(block, "pattern_match", "value")
-                current_mcq = MCQ(question_number=q_num, question_text="")
+        # Process blocks page by page, column by column
+        for page in doc.pages:
+            for column_blocks in [page.left_column_blocks, page.right_column_blocks]:
+                if not column_blocks:
+                    continue
+
+                # State machine for each column
+                current_mcq = None
                 current_part = "question"
-                print(f"\n[NEW MCQ] Started MCQ #{q_num} from block '{block.id}': '{block.text.strip()}'")
+                self.last_option_key = None
 
-            if not current_mcq:
-                continue
+                for block in column_blocks:
+                    if self._is_question_start(block, current_mcq):
+                        if current_mcq:
+                            mcqs.append(current_mcq)
+                        
+                        q_num = self._get_analysis(block, "pattern_match", "value")
+                        current_mcq = MCQ(question_number=q_num, question_text="")
+                        current_part = "question"
+                        self.last_option_key = None
+                        
+                        # Clean the question number from the text
+                        text_to_add = re.sub(self.config['HEURISTICS']['PATTERNS']['REGEX_QUESTION'], '', block.text, 1)
+                        current_mcq.question_text = text_to_add.strip()
+                        continue
 
-            # State machine logic
-            pattern_type = self._get_analysis(block, "pattern_match", "type")
-            
-            prev_part = current_part
-            if current_part == "question" and pattern_type == "option":
-                current_part = "option"
-            elif (current_part == "question" or current_part == "option") and pattern_type == "answer_marker":
-                current_part = "explanation"
+                    if not current_mcq:
+                        continue
 
-            if prev_part != current_part:
-                print(f"  [STATE]  Transition: {prev_part} -> {current_part} (block: {block.id}, text: '{block.text.strip()}')")
+                    # --- State transition logic ---
+                    pattern_type = self._get_analysis(block, "pattern_match", "type")
+                    if pattern_type == "option" and current_part != "explanation":
+                        current_part = "option"
+                    elif pattern_type == "answer_marker":
+                        current_part = "explanation"
+                        self.last_option_key = None
 
-            # Append text based on current state
-            if current_part == "question":
-                text_to_add = re.sub(self.config['HEURISTICS']['PATTERNS']['REGEX_QUESTION'], '', block.text, 1)
-                current_mcq.question_text += f" {text_to_add.strip()}"
-                print(f"  [Q]      Appending: '{text_to_add.strip()}'")
-            
-            elif current_part == "option":
-                option_key = self._get_analysis(block, "pattern_match", "value")
-                if option_key:
-                    text_to_add = re.sub(self.config['HEURISTICS']['PATTERNS']['REGEX_OPTION'], '', block.text, 1)
-                    current_mcq.options[option_key] = current_mcq.options.get(option_key, "") + f" {text_to_add.strip()}"
-                    print(f"  [Opt {option_key}] Appending: '{text_to_add.strip()}'")
-                # NOTE: This logic doesn't handle option text that spans multiple blocks without a key.
+                    # --- Content assembly logic ---
+                    if current_part == "question":
+                        # If there's a significant vertical break, we assume the question text has ended.
+                        if self._get_analysis(block, "vertical_break", "value"):
+                            current_part = "seek_option" # State indicating we're done with question text.
 
-            elif current_part == "explanation":
-                if pattern_type == "answer_marker" and not current_mcq.answer:
-                    current_mcq.answer = self._get_analysis(block, "pattern_match", "value")
-                    print(f"  [Answer] Found: {current_mcq.answer}")
-                
-                text_to_add = re.sub(self.config['HEURISTICS']['PATTERNS']['REGEX_ANSWER'], '', block.text, 1, re.IGNORECASE)
-                if current_mcq.explanation is None: current_mcq.explanation = ""
-                current_mcq.explanation += f" {text_to_add.strip()}"
-                print(f"  [Expl]   Appending: '{text_to_add.strip()}'")
-        
-        if current_mcq: # Add the last MCQ
-            print(f"--- Finalizing Last MCQ {current_mcq.question_number} ---")
-            mcqs.append(current_mcq)
-            
-        # Clean up whitespace
-        for mcq in mcqs:
-            mcq.question_text = mcq.question_text.strip()
-            if mcq.explanation: mcq.explanation = mcq.explanation.strip()
-            for k, v in mcq.options.items():
-                mcq.options[k] = v.strip()
+                        # Append text only if we are still in the question part and it's not a recognized component.
+                        if current_part == "question" and not pattern_type:
+                            current_mcq.question_text += f" {block.text.strip()}"
 
-        return sorted(mcqs, key=lambda m: m.question_number)
+                    elif current_part == "option":
+                        option_key = self._get_analysis(block, "pattern_match", "value")
+                        if option_key:
+                            text_to_add = re.sub(self.config['HEURISTICS']['PATTERNS']['REGEX_OPTION'], '', block.text, 1)
+                            current_mcq.options[option_key] = text_to_add.strip()
+                            self.last_option_key = option_key
+                        elif self.last_option_key:
+                            # Append to the last seen option (for multi-line options)
+                            current_mcq.options[self.last_option_key] += f" {block.text.strip()}"
+
+                    elif current_part == "explanation":
+                        if pattern_type == "answer_marker" and not current_mcq.answer:
+                            current_mcq.answer = self._get_analysis(block, "pattern_match", "value")
+                        
+                        # Clean the 'Ans:' part from the text
+                        text_to_add = re.sub(self.config['HEURISTICS']['PATTERNS']['REGEX_ANSWER'], '', block.text, 1, re.IGNORECASE)
+                        
+                        if current_mcq.explanation is None:
+                            current_mcq.explanation = text_to_add.strip()
+                        else:
+                            current_mcq.explanation += f" {text_to_add.strip()}"
+
+                # Add the last MCQ from the column if it exists
+                if current_mcq:
+                    mcqs.append(current_mcq)
+
+        # Merge and clean up the final list
+        final_mcqs = self._merge_mcqs(mcqs)
+        for mcq in final_mcqs:
+            # Final cleanup of question text
+            mcq.question_text = ' '.join(mcq.question_text.split())
+        return final_mcqs

@@ -1,7 +1,7 @@
 # in pdf_parser.py
 import fitz  # PyMuPDF
 from typing import List, Dict, Tuple
-from data_models import Document, Page, TextBlock
+from qna_orchestrator.qna_heuristics.data_models import Document, Page, TextBlock
 
 class PDFParser:
     def __init__(self, config: Dict):
@@ -40,13 +40,24 @@ class PDFParser:
                 continue
             for line in b["lines"]:
                 if line["spans"]:
-                    text = "".join(span["text"] for span in line["spans"]).strip()
+                    line_text = ""
+                    font_size = 0
+                    font_name = ""
+                    for span in line["spans"]:
+                        line_text += span["text"]
+                        font_size = max(font_size, span.get("size", 0))
+                        if not font_name:
+                            font_name = span.get("font", "Unknown")
+
+                    text = line_text.strip()
                     if text:
                         text_blocks.append(TextBlock(
                             id=f"p{page.number + 1}-b{block_idx}",
                             page_number=page.number + 1,
                             text=text,
-                            bbox=line["bbox"]
+                            bbox=line["bbox"],
+                            font_size=font_size,
+                            font_name=font_name
                         ))
                         block_idx += 1
         # Sort blocks by reading order (top-to-bottom, left-to-right)

@@ -1,6 +1,14 @@
 # in main.py
+import json
+import argparse
+import os
 import sys
-from orchestrator import Orchestrator
+
+# Add project root to sys.path to allow for absolute imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+from qna_orchestrator.qna_heuristics.orchestrator import Orchestrator
+# from qna_orchestrator.qna_heuristics.config import get_config
 
 def main():
     """

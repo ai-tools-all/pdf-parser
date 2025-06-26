@@ -8,6 +8,8 @@ class TextBlock:
     page_number: int
     text: str
     bbox: Tuple[float, float, float, float]
+    font_size: float
+    font_name: str
     # This list will be populated by the analysis phase
     analysis_results: List[Dict[str, Any]] = field(default_factory=list)
 

@@ -1,7 +1,7 @@
 # in heuristics/patterns.py
 import re
 from typing import Dict, Any, Optional
-from data_models import AnalysisContext
+from qna_orchestrator.qna_heuristics.data_models import AnalysisContext
 
 def analyze_question_number(context: AnalysisContext) -> Optional[Dict[str, Any]]:
     """Checks if a block starts with a question number pattern."""
