@@ -47,6 +47,7 @@ class AnalysisContext:
         all_blocks_in_scope: List[TextBlock],
         scope_median_spacing: float,
         scope_min_x: float,
+        scope_median_font_size: float,
         config: Dict[str, Any]
     ):
         self.current_block = current_block
@@ -54,4 +55,5 @@ class AnalysisContext:
         self.all_blocks_in_scope = all_blocks_in_scope
         self.scope_median_spacing = scope_median_spacing
         self.scope_min_x = scope_min_x
+        self.scope_median_font_size = scope_median_font_size
         self.config = config

@@ -16,6 +16,8 @@ DEFAULT_CONFIG = {
         "qna_orchestrator.qna_heuristics.heuristics.patterns.analyze_question_number",
         "qna_orchestrator.qna_heuristics.heuristics.patterns.analyze_option_letter",
         "qna_orchestrator.qna_heuristics.heuristics.patterns.analyze_answer_marker",
+        "qna_orchestrator.qna_heuristics.heuristics.patterns.analyze_descriptive_question_start",
+        "qna_orchestrator.qna_heuristics.heuristics.patterns.analyze_explanation_start",
         "qna_orchestrator.qna_heuristics.heuristics.layout.analyze_indentation",
         "qna_orchestrator.qna_heuristics.heuristics.layout.analyze_font_style",
     ],
@@ -29,8 +31,10 @@ DEFAULT_CONFIG = {
     # Parameters for Heuristics, organized by module
     "HEURISTICS": {
         "SPACING": {
-            # A gap is a "break" if it's > N times the normal line spacing
-            "BREAK_THRESHOLD_MULTIPLIER": 1.7,
+            # Enhanced multi-level break detection thresholds
+            "SMALL_BREAK_MULTIPLIER": 1.2,
+            "MEDIUM_BREAK_MULTIPLIER": 1.7,  # Original threshold
+            "LARGE_BREAK_MULTIPLIER": 2.5,
             # Ignore tiny gaps when calculating normal spacing
             "MIN_GAP_FOR_NORMAL_SPACING": 0.5,
             # Ignore huge gaps (likely section breaks) for normal spacing

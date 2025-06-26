@@ -38,3 +38,62 @@ def analyze_answer_marker(context: AnalysisContext) -> Optional[Dict[str, Any]]:
             "value": match.group(1).lower()
         }
     return None
+
+def analyze_descriptive_question_start(context: AnalysisContext) -> Optional[Dict[str, Any]]:
+    """
+    Detects question starts that begin with descriptive text rather than numbers.
+    Common patterns: 'Consider the following', 'Which of the following', etc.
+    """
+    text = context.current_block.text.strip()
+    
+    # Patterns that commonly start MCQ questions
+    descriptive_patterns = [
+        r'^Consider\s+the\s+following',
+        r'^Which\s+of\s+the\s+following',
+        r'^What\s+is\s+the',
+        r'^How\s+many\s+of\s+the',
+        r'^Identify\s+the',
+        r'^Select\s+the',
+        r'^Choose\s+the',
+        r'^Mark\s+the',
+        r'^Find\s+the',
+        r'^Determine\s+the'
+    ]
+    
+    for pattern in descriptive_patterns:
+        if re.match(pattern, text, re.IGNORECASE):
+            return {
+                "heuristic_name": "pattern_match", 
+                "type": "descriptive_question_start",
+                "pattern": pattern,
+                "confidence": "high"
+            }
+    
+    return None
+
+def analyze_explanation_start(context: AnalysisContext) -> Optional[Dict[str, Any]]:
+    """
+    Detects the start of answer explanations.
+    Common patterns: 'Statement 1 is correct:', 'Explanation:', etc.
+    """
+    text = context.current_block.text.strip()
+    
+    explanation_patterns = [
+        r'^Statement\s+\d+\s+is\s+(correct|incorrect)',
+        r'^Explanation\s*:',
+        r'^Solution\s*:',
+        r'^Answer\s*:',
+        r'^Reason\s*:',
+        r'^Justification\s*:'
+    ]
+    
+    for pattern in explanation_patterns:
+        if re.match(pattern, text, re.IGNORECASE):
+            return {
+                "heuristic_name": "pattern_match",
+                "type": "explanation_start", 
+                "pattern": pattern,
+                "confidence": "high"
+            }
+    
+    return None

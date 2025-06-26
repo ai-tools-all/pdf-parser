@@ -87,6 +87,10 @@ class Orchestrator:
         normal_gaps = [g for g in gaps if cfg['MIN_GAP_FOR_NORMAL_SPACING'] < g < cfg['MAX_GAP_FOR_NORMAL_SPACING']]
         median_spacing = statistics.median(normal_gaps) if normal_gaps else 5.0
         min_x = min(b.bbox[0] for b in blocks)
+        
+        # Calculate median font size for enhanced font detection
+        font_sizes = [b.font_size for b in blocks if b.font_size > 0]
+        median_font_size = statistics.median(font_sizes) if font_sizes else 12.0
 
         for i, block in enumerate(blocks):
             prev_block = blocks[i-1] if i > 0 else None
@@ -96,6 +100,7 @@ class Orchestrator:
                 all_blocks_in_scope=blocks,
                 scope_median_spacing=median_spacing,
                 scope_min_x=min_x,
+                scope_median_font_size=median_font_size,
                 config=self.config
             )
             for heuristic_func in self.heuristics:
@@ -115,16 +120,54 @@ class StructureAssembler:
         return default
 
     def _is_question_start(self, block: TextBlock, current_mcq: Optional[MCQ]) -> bool:
+        """
+        Enhanced multi-signal question detection combining:
+        1. Vertical spacing breaks
+        2. Pattern matching (numbered + descriptive)
+        3. Font styling (bold/large)
+        4. Indentation rules
+        """
+        # Get analysis results
         is_break = self._get_analysis(block, "vertical_break", "is_break", False)
+        break_type = self._get_analysis(block, "vertical_break", "break_type", "none")
         pattern_type = self._get_analysis(block, "pattern_match", "type")
         is_indented = self._get_analysis(block, "indentation", "is_indented", False)
-        is_potential_start = is_break and pattern_type == "question_start" and not is_indented
-        if not is_potential_start:
-            return False
-        q_num = self._get_analysis(block, "pattern_match", "value")
-        if current_mcq and q_num == current_mcq.question_number:
-            return False
-        return True
+        is_bold = self._get_analysis(block, "font_style", "is_bold", False) 
+        font_question_indicator = self._get_analysis(block, "font_style", "question_indicator", False)
+        
+        # Signal 1: Traditional numbered questions (high confidence)
+        if pattern_type == "question_start" and is_break and not is_indented:
+            q_num = self._get_analysis(block, "pattern_match", "value")
+            if current_mcq and q_num == current_mcq.question_number:
+                return False
+            return True
+        
+        # Signal 2: Descriptive question starts (medium confidence)
+        if pattern_type == "descriptive_question_start":
+            # Require either significant spacing or bold formatting
+            if (break_type in ["medium_break", "large_break"] or 
+                (is_bold and break_type == "small_break") or
+                font_question_indicator):
+                return True
+        
+        # Signal 3: Bold text with significant spacing (medium confidence)
+        if (is_bold and break_type in ["medium_break", "large_break"] and 
+            not is_indented and pattern_type != "option"):
+            # Additional check: avoid false positives for emphasized text within questions
+            text = block.text.strip().lower()
+            if not any(word in text for word in ["statement", "option", "choice"]):
+                return True
+        
+        # Signal 4: Large spacing with question-like content (low confidence)
+        if (break_type == "large_break" and not is_indented and 
+            pattern_type != "option" and pattern_type != "answer_marker"):
+            text = block.text.strip()
+            # Check if text looks like a question (ends with ?, contains question words)
+            if (text.endswith('?') or 
+                any(word in text.lower() for word in ['which', 'what', 'how', 'consider', 'identify'])):
+                return True
+        
+        return False
 
     def _merge_mcqs(self, mcqs: List[MCQ]) -> List[MCQ]:
         merged_mcqs_dict = {}

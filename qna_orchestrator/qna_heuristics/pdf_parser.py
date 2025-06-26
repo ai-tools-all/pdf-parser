@@ -64,9 +64,46 @@ class PDFParser:
         return sorted(text_blocks, key=lambda b: (b.bbox[1], b.bbox[0]))
 
     def _find_column_separator(self, page: fitz.Page, blocks: List[TextBlock]) -> float:
-        # Simplified heuristic: assume separator is near the middle
-        # A more robust implementation would analyze gaps in the x-distribution of text
-        return page.rect.width / 2
+        """
+        Find dynamic column separator by analyzing actual text distribution
+        """
+        if not blocks:
+            return page.rect.width / 2
+        
+        # Get x-coordinates of all text blocks
+        x_coords = []
+        for block in blocks:
+            left_x = block.bbox[0]
+            right_x = block.bbox[2]
+            center_x = (left_x + right_x) / 2
+            x_coords.extend([left_x, center_x, right_x])
+        
+        x_coords.sort()
+        page_width = page.rect.width
+        
+        # Find the largest gap in the middle 60% of the page
+        # This avoids edge cases and focuses on likely column separators
+        start_range = page_width * 0.2
+        end_range = page_width * 0.8
+        
+        largest_gap = 0
+        best_separator = page_width / 2  # fallback
+        
+        for i in range(len(x_coords) - 1):
+            gap_start = x_coords[i]
+            gap_end = x_coords[i + 1]
+            gap_size = gap_end - gap_start
+            gap_center = (gap_start + gap_end) / 2
+            
+            # Only consider gaps in the middle region and larger than minimum threshold
+            min_gap_size = page_width * 0.05  # 5% of page width minimum
+            if (start_range <= gap_center <= end_range and 
+                gap_size > largest_gap and 
+                gap_size > min_gap_size):
+                largest_gap = gap_size
+                best_separator = gap_center
+        
+        return best_separator
 
     def _classify_blocks(self, page_obj: Page, blocks: List[TextBlock], separator_x: float):
         header_y = page_obj.page_height * self.config["HEADER_REGION_PERCENT"]
