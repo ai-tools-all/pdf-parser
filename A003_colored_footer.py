@@ -4,26 +4,28 @@ import re
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, asdict
 
+# Import the standard PageLayout from protocol
+from pdf_extractor_protocol import PageLayout
+
 @dataclass
 class TextBlock:
+    """Internal data structure for text blocks with formatting info."""
     text: str
     bbox: Tuple[float, float, float, float]  # x0, y0, x1, y1
     font_size: float
     font_name: str
 
-@dataclass
-class PageLayout:
-    page_number: int
-    header: str
-    footer: str
-    left_column: str
-    right_column: str
-    page_width: float
-    page_height: float
-    column_separator_position: Optional[float]
-    metadata: Dict
-
 class PDFColumnExtractor:
+    """
+    PDF layout extractor with colored footer detection support.
+
+    Implements the PDFLayoutExtractor protocol for compatibility with
+    the testing framework. Specializes in detecting colored footer regions
+    and extracting two-column layouts.
+
+    Args:
+        pdf_path: Path to the PDF file to process
+    """
     def __init__(self, pdf_path: str):
         self.pdf_path = pdf_path
         self.doc = fitz.open(pdf_path)

@@ -11,6 +11,28 @@ dependencies = [
     "torchvision>=0.22.1",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "syrupy>=4.0.0",
+    "pytest-xdist>=3.0.0",  # For parallel test execution
+]
 
 [tool.uv]
 extra-index-url = ["https://download.pytorch.org/whl/cpu"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+markers = [
+    "snapshot: snapshot tests",
+    "slow: marks tests as slow",
+    "extractor: marks tests for specific extractor implementations",
+]
