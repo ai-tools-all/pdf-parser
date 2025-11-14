@@ -6,7 +6,7 @@ A comprehensive quiz on iptables, packet flow, NAT, and Linux firewall concepts 
 
 ```
 content/iptables-quiz/
-├── mcq/                    # Multiple Choice Questions (10 questions)
+├── mcq/                    # Multiple Choice Questions (20 questions)
 │   ├── 01-filter-table-purpose.md
 │   ├── 02-dnat-chain.md
 │   ├── 03-input-chain-packets.md
@@ -16,7 +16,17 @@ content/iptables-quiz/
 │   ├── 07-mangle-table-usage.md
 │   ├── 08-port-forwarding-rules.md
 │   ├── 09-conntrack-analysis.md
-│   └── 10-complete-forwarding-flow.md
+│   ├── 10-complete-forwarding-flow.md
+│   ├── 11-raw-table-purpose.md
+│   ├── 12-docker-iptables.md
+│   ├── 13-icmp-filtering.md
+│   ├── 14-logging-rules.md
+│   ├── 15-default-policy.md
+│   ├── 16-ftp-conntrack.md
+│   ├── 17-rate-limiting.md
+│   ├── 18-source-nat-scenarios.md
+│   ├── 19-table-priority-order.md
+│   └── 20-ipv6-ip6tables.md
 │
 └── subjective/             # Open-ended questions
     ├── L3-baseline/        # Beginner level
@@ -34,7 +44,7 @@ content/iptables-quiz/
 
 Each MCQ file includes YAML frontmatter with:
 - `id`: Unique question identifier
-- `day`: Learning progression (1-3)
+- `day`: Learning progression (1-6)
 - `tags`: Topic categorization
 
 Question structure:
@@ -62,6 +72,20 @@ Question structure:
 - Connection tracking analysis
 - Complete packet flow with multiple tables
 - NAT troubleshooting
+
+### Level 4 (Questions 11-15): Specialized Topics
+- Raw table and connection tracking bypass
+- Docker integration with iptables
+- ICMP filtering and network troubleshooting
+- Logging and debugging techniques
+- Security policies and best practices
+
+### Level 5 (Questions 16-20): Expert Topics
+- FTP and connection tracking helpers
+- Rate limiting and DDoS protection
+- SNAT vs MASQUERADE scenarios
+- Table processing priority and order
+- IPv6 and dual-stack firewall configuration
 
 ## Subjective Questions
 
@@ -91,10 +115,13 @@ Complex production scenarios:
 - **Tables**: filter, nat, mangle, raw
 - **Chains**: PREROUTING, INPUT, FORWARD, OUTPUT, POSTROUTING
 - **NAT**: SNAT, DNAT, Masquerading, Port Forwarding
-- **Connection Tracking**: conntrack, stateful filtering
-- **Packet Flow**: Complete traversal through tables and chains
-- **Performance**: Optimization, ipset, rule ordering
-- **Advanced**: Policy routing, multi-WAN, VoIP, high-performance scenarios
+- **Connection Tracking**: conntrack, stateful filtering, helpers (FTP)
+- **Packet Flow**: Complete traversal through tables and chains, processing order
+- **Performance**: Optimization, ipset, rule ordering, NOTRACK
+- **Security**: Default policies, rate limiting, DDoS protection, logging
+- **Container Networking**: Docker iptables integration
+- **Protocol-Specific**: ICMP filtering, FTP handling, VoIP/SIP
+- **Advanced**: Policy routing, multi-WAN, VoIP, high-performance scenarios, IPv6/ip6tables
 
 ## Usage
 
@@ -102,8 +129,10 @@ Complex production scenarios:
 1. Start with MCQ questions 1-3 (fundamentals)
 2. Progress through questions 4-7 (intermediate)
 3. Challenge yourself with questions 8-10 (advanced)
-4. Attempt subjective questions matching your level
-5. Use the "Hook" questions to deepen understanding
+4. Explore specialized topics in questions 11-15
+5. Master expert topics in questions 16-20
+6. Attempt subjective questions matching your level
+7. Use the "Hook" questions to deepen understanding
 
 ### For Instructors
 - MCQs suitable for quick assessments
@@ -114,9 +143,18 @@ Complex production scenarios:
 
 ## Learning Path
 
+### 3-Week Course
 1. **Week 1**: MCQ 1-3, L3 Subjective (Basics)
 2. **Week 2**: MCQ 4-7, L4 Subjective (NAT & Forwarding)
 3. **Week 3**: MCQ 8-10, L5 Subjective (Advanced Scenarios)
+
+### 6-Week Course (Extended)
+1. **Week 1**: MCQ 1-3 (Fundamentals)
+2. **Week 2**: MCQ 4-7 (Intermediate), L3 Subjective
+3. **Week 3**: MCQ 8-10 (Advanced NAT & Flow)
+4. **Week 4**: MCQ 11-15 (Specialized Topics), L4 Subjective
+5. **Week 5**: MCQ 16-20 (Expert Topics)
+6. **Week 6**: L5 Subjective (Complex Production Scenarios)
 
 ## Assessment Rubrics
 
