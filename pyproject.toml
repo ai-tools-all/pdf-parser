@@ -21,6 +21,11 @@ test = [
 [tool.uv]
 extra-index-url = ["https://download.pytorch.org/whl/cpu"]
 
+[tool.uv.workspace]
+members = [
+    "nutrition-audio-pipeline",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
