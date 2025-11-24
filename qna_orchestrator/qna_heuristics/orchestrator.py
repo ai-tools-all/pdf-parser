@@ -9,6 +9,8 @@ from typing import Dict, Any, List, Optional
 from qna_orchestrator.qna_heuristics.config import get_config
 from qna_orchestrator.qna_heuristics.pdf_parser import PDFParser
 from qna_orchestrator.qna_heuristics.data_models import Document, MCQ, TextBlock, AnalysisContext, Page
+from qna_orchestrator.qna_heuristics.heuristics.layout import analyze_block_layout
+
 
 class Orchestrator:
     def __init__(self, config_overrides: Optional[Dict] = None):
@@ -18,6 +20,9 @@ class Orchestrator:
             self.config.update(config_overrides)
         
         self.heuristics = self._load_heuristics()
+        self.heuristics.append(analyze_block_layout)  # Add the new heuristic
+        from qna_orchestrator.qna_heuristics.heuristics.question_start import is_question_start
+        self.heuristics.append(is_question_start)
         os.makedirs(self.config["OUTPUT_DIR"], exist_ok=True)
 
     def _load_heuristics(self):
@@ -128,18 +133,6 @@ class StructureAssembler:
                 return result.get(key, default)
         return default
 
-    def _is_question_start(self, block: TextBlock, current_mcq: Optional[MCQ]) -> bool:
-        """
-        Uses the enhanced_question_start heuristic.
-        """
-        for result in block.analysis_results:
-            if result.get("heuristic_name") == "enhanced_question_start" and result.get("is_question_start"):
-                q_num = result.get("question_number")
-                if current_mcq and q_num == current_mcq.question_number:
-                    return False
-                return True
-        return False
-
     def _merge_mcqs(self, mcqs: List[MCQ]) -> List[MCQ]:
         merged_mcqs_dict = {}
         for mcq in mcqs:
@@ -184,14 +177,13 @@ class StructureAssembler:
         current_part = None
         last_option_key = None
 
-        for block in all_blocks:
-            if self._is_question_start(block, current_mcq):
+        for i, block in enumerate(all_blocks):
+            question_start_analysis = self._get_analysis(block, "question_start", "is_question_start", default=False)
+            if question_start_analysis:
                 if current_mcq:
                     mcqs.append(current_mcq)
                 
-                q_num_analysis = next((r for r in block.analysis_results if r.get("heuristic_name") == "enhanced_question_start"), None)
-                q_num = q_num_analysis.get("question_number") if q_num_analysis else None
-
+                q_num = self._get_analysis(block, "question_start", "question_number")
                 current_mcq = MCQ(question_number=q_num, question_text="")
                 current_part = "question"
                 last_option_key = None
@@ -205,6 +197,17 @@ class StructureAssembler:
                 continue
 
             classification = self._get_classification(block)
+            
+            # Look ahead to see if the next block is a question start
+            is_next_block_question_start = False
+            if i + 1 < len(all_blocks):
+                next_block = all_blocks[i+1]
+                if self._get_analysis(next_block, "question_start", "is_question_start", default=False):
+                    is_next_block_question_start = True
+
+            if is_next_block_question_start and current_part != "explanation":
+                current_part = "explanation"
+
             if not classification:
                 # If no classification, append to the last part
                 if current_part == "question":

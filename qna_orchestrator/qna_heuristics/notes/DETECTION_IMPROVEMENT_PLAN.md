@@ -1,4 +1,4 @@
-# MCQ Detection Improvement Plan
+# MCQ Detection Improvement Plan (Updated)
 
 ## Current Issues Analysis
 
@@ -9,223 +9,179 @@
 4. **Answer Detection** - "Ans: (b)" pattern is being detected but not properly handled
 5. **Column Confusion** - Text from different columns getting merged incorrectly
 
-### Example of Current vs Expected Output
+## Implementation Plan (Revised Based on User Feedback)
 
-**Current Detection (WRONG):**
-```
-Question b: "Ans: (b) Constitutional importance as it was the first step taken..."
-```
+### Phase 1: Layout Detection (HIGHEST PRIORITY)
+**Rationale**: Layout detection must happen first to provide context for all other heuristics
 
-**Expected Detection (CORRECT):**
-```
-Question 1: "Consider the following statements:
-1. It acknowledged the Company's Political and Administrative roles for the first time.
-2. Governor General of Bengal was designated as Governor General of India.
-3. Lord Warren Hastings was the first Governor General of Bengal.
-4. The Supreme Court at Bombay was established.
-5. It prohibited the servants of the Company from engaging in any private trade.
-How many of the above statements are the principal features of the Regulating Act, 1773?
-(a) Only two
-(b) Only three  
-(c) Only four
-(d) All five
-Ans: (b)"
-```
-
-## Implementation Plan
-
-### Phase 1: Fix Question Number Detection
-**Issue**: Current regex `^\s*(\d+)\.` only catches digits, but we need to detect "1. Consider the following..."
-
-##>> the question detection has multiple signals. user can specify those signasls in config.py 
-
-possible ones are 
-1. indented to the left 
-2. starting with number (or any given regex by user)
-3. first line of the question has bold text (helpful to detect questions starting point ) 
-4. spacing based hueristics  -- to understand where one question ends and another begins
-
-
-it is  possibnle that the question might have multiple statements starting from numebrs, like 1. 2. 3. etc.  -- we have to handle that as well. so , the focus on is on question detection begin and end 
-
-
-##>> for layout detection, user can clearly specify that in config.py 
-
-for current needs, we need 
-- two column layout -- vetical horizontal 
-- header detection 
-- footer detectoin -- for this case, it is the colored background text 
-
+**Requirements from User:**
+- Two column layout (vertical/horizontal)
+- Header detection
+- Footer detection (colored background text)
+- User-configurable layout parameters in config.py
 
 **Solutions:**
-- [ ] Update pattern matching to handle numbered statements with bold formatting
-- [ ] Add detection for "Consider the following statements:" patterns
-- [ ] Implement multi-line question text assembly
-- [ ] Handle sub-numbered statements (1., 2., 3., etc. within questions)
+- [ ] Enhance PDF parser to detect layout early in processing
+- [ ] Add configurable layout types in config.py
+- [ ] Implement header/footer detection with configurable regions
+- [ ] Provide layout context to all subsequent heuristics
 
 **Files to modify:**
-- `heuristics/patterns.py` - Update regex patterns
-- `config.py` - Add new pattern configurations
+- `config.py` - Add layout configuration section
+- `pdf_parser.py` - Enhanced layout detection
+- `data_models.py` - Add layout context to AnalysisContext
 
-### Phase 2: Implement Proper Text Flow (Reading Order)
+### Phase 2: Configurable Multi-Signal Question Detection
+**User Requirements:**
+Question detection should use multiple configurable signals:
+1. **Indentation** - Questions aligned to the left
+2. **Number Pattern** - Starting with number (or any user-defined regex)
+3. **Bold Text** - First line of question has bold formatting
+4. **Spacing** - Spacing-based heuristics for question boundaries
+
+**Key Point**: Handle numbered sub-statements (1., 2., 3.) within questions while detecting question start/end boundaries
+
+**Solutions:**
+- [ ] Create configurable signal system in config.py
+- [ ] Implement signal combination logic with user-defined weights
+- [ ] Handle nested numbered statements within questions
+- [ ] Focus on question boundary detection (begin/end)
+
+**Files to modify:**
+- `config.py` - Add signal configuration
+- `heuristics/patterns.py` - Flexible pattern matching
+- `orchestrator.py` - Signal combination logic
+
+### Phase 3: Proper Text Flow (Reading Order)
 **Issue**: Current system processes left column completely, then right column
 
 **Solutions:**
 - [ ] Implement proper reading order: top of left column → top of right column → next section
 - [ ] Create block sorting by Y-coordinate across both columns
+- [ ] Use layout context from Phase 1
 - [ ] Ensure question parts from both columns are properly assembled
-- [ ] Handle cases where questions span multiple sections
 
 **Files to modify:**
 - `orchestrator.py` - Update assembly logic in `StructureAssembler.assemble()`
 - `pdf_parser.py` - Ensure proper block ordering
 
-### Phase 3: Enhanced Question Boundary Detection 
-##>> this is NOT need to be covered separately
-
-**Issue**: Missing "Consider the following statements:" type questions
-
-**Solutions:**
-- [ ] Multi-signal detection combining:
-  - Bold text detection (already implemented)
-  - Numbered list pattern (1., 2., etc.)
-  - Vertical spacing breaks (enhanced)
-  - Descriptive question starters (already added)
-- [ ] Implement confidence scoring for boundary detection
-- [ ] Add fallback detection for edge cases
-
-**Files to modify:**
-- `orchestrator.py` - Update `_is_question_start()` method
-- `heuristics/layout.py` - Enhance bold detection
-- `heuristics/spacing.py` - Fine-tune spacing thresholds
-
-### Phase 4: Better Answer/Explanation Separation
-**Issue**: "Ans: (b)" text is being mixed with question content
- 
-##>>  you can use a combined appracoh for this one too. 
-##>> regex given by the user + any other pattern that user decides. make these functions so that they can be applied to any block
+### Phase 4: Configurable Answer/Explanation Detection
+**User Requirements:**
+- Use combined approach: regex + other user-defined patterns
+- Make these functions applicable to any block
+- Separate answers from explanations cleanly
 
 **Solutions:**
+- [ ] Create configurable pattern system for answers
+- [ ] Implement generic pattern application functions
 - [ ] Proper state machine for question → options → answer → explanation flow
-- [ ] Detect "Ans:" pattern and transition to answer state
-- [ ] Handle explanation text that follows answers
-- [ ] Separate answer choice from explanation content
+- [ ] User-configurable answer patterns
 
 **Files to modify:**
-- `orchestrator.py` - Update state machine logic
-- `heuristics/patterns.py` - Enhance answer detection
-
-### Phase 5: Column-Aware Processing
-
-##>> this must be the first part. we want to decide the layout early on which will help us understand the blocks better and apply all the heurisitcs in context of columns awware processing 
-
-
-**Issue**: Text from different columns getting merged incorrectly
-
-**Solutions:**
-- [ ] Process blocks in proper reading order across both columns
-- [ ] Maintain column context during assembly
-- [ ] Handle questions that span both columns
-- [ ] Prevent text bleeding between unrelated content
-
-**Files to modify:**
-- `orchestrator.py` - Major refactor of assembly logic
-- `pdf_parser.py` - Improve column separation (already enhanced)
+- `config.py` - Add answer detection patterns
+- `heuristics/patterns.py` - Generic pattern functions
+- `orchestrator.py` - Enhanced state machine
 
 ## Detailed Implementation Steps
 
-### Step 1: Reading Order Fix
-```python
-# New algorithm for proper text flow
-def get_reading_order_blocks(left_blocks, right_blocks):
-    # Sort both columns by Y-coordinate
-    # Interleave based on Y-position to maintain reading flow
-    # Return single ordered list
-```
-
-### Step 2: Enhanced Question Detection
-```python
-def _is_question_start_enhanced(self, block, context):
-    signals = {
-        'numbered_pattern': detect_number_pattern(block.text),
-        'bold_formatting': detect_bold(block.font),
-        'descriptive_start': detect_descriptive_patterns(block.text),
-        'vertical_spacing': analyze_spacing(context),
-        'column_position': analyze_position(block.bbox)
-    }
-    return calculate_confidence(signals) > threshold
-```
-
-### Step 3: State Machine Enhancement
-```python
-states = ['question_start', 'question_body', 'sub_statements', 'options', 'answer', 'explanation']
-transitions = {
-    'question_start': ['question_body'],
-    'question_body': ['sub_statements', 'options'],
-    'sub_statements': ['options', 'question_body'],
-    'options': ['answer', 'options'],
-    'answer': ['explanation', 'question_start'],
-    'explanation': ['question_start']
-}
-```
-
-## Configuration Updates Needed
-
-### New Regex Patterns
+### Step 1: Enhanced Configuration System
 ```yaml
-PATTERNS:
-  REGEX_QUESTION_NUMBERED: '^\s*(\d+)\.\s*(.+)'
-  REGEX_SUB_STATEMENT: '^\s*(\d+)\.\s*(.+)'
-  REGEX_DESCRIPTIVE_QUESTION: '^(Consider\s+the\s+following|Which\s+of\s+the\s+following|How\s+many)'
-  REGEX_ANSWER_WITH_EXPLANATION: '^Ans:\s*\(?([a-d])\)?\s*(.*)'
+# config.py additions
+LAYOUT:
+  TYPE: "two_column_vertical"
+  HEADER_PERCENT: 0.12
+  FOOTER_PERCENT: 0.90
+  COLUMN_GAP_THRESHOLD: 0.05
+  
+QUESTION_DETECTION:
+  SIGNALS:
+    indentation:
+      enabled: true
+      weight: 0.3
+      threshold: 15.0
+    number_pattern:
+      enabled: true
+      weight: 0.4
+      regex: '^\s*(\d+)\.'
+    bold_text:
+      enabled: true
+      weight: 0.2
+    spacing:
+      enabled: true
+      weight: 0.3
+      multiplier: 2.0
+  CONFIDENCE_THRESHOLD: 0.6
+
+ANSWER_DETECTION:
+  PATTERNS:
+    - regex: '^Ans:\s*\(?([a-d])\)?'
+      type: 'answer_marker'
+      weight: 1.0
+    - regex: '^Answer:\s*\(?([a-d])\)?'
+      type: 'answer_marker'
+      weight: 0.8
 ```
 
-### Enhanced Thresholds
-```yaml
-SPACING:
-  QUESTION_BREAK_MULTIPLIER: 2.0
-  SUB_STATEMENT_MULTIPLIER: 1.3
-  OPTION_BREAK_MULTIPLIER: 1.5
+### Step 2: Signal-Based Question Detection
+```python
+def detect_question_start(block, context, config):
+    signals = {}
+    total_weight = 0
+    
+    for signal_name, signal_config in config['QUESTION_DETECTION']['SIGNALS'].items():
+        if signal_config['enabled']:
+            signal_value = apply_signal(signal_name, block, context, signal_config)
+            signals[signal_name] = signal_value * signal_config['weight']
+            total_weight += signal_config['weight']
+    
+    confidence = sum(signals.values()) / total_weight
+    return confidence > config['QUESTION_DETECTION']['CONFIDENCE_THRESHOLD']
 ```
 
-## Testing Strategy
+### Step 3: Layout-Aware Processing
+```python
+def process_with_layout(document):
+    for page in document.pages:
+        layout_type = detect_layout_type(page)
+        if layout_type == "two_column_vertical":
+            blocks = get_reading_order_blocks(page.left_column_blocks, page.right_column_blocks)
+        else:
+            blocks = get_single_column_blocks(page)
+        
+        process_blocks_in_order(blocks, layout_context)
+```
 
-### Test Cases to Validate
-1. **Question 1 Detection**: "Consider the following statements:" should be detected as question start
-2. **Sub-statements**: Numbered statements within questions should be included in question text
-3. **Answer Separation**: "Ans: (b)" should be separated from explanation
-4. **Column Flow**: Text should flow properly across columns
-5. **Multiple Questions**: Each question should be cleanly separated
+## Priority Order (Updated)
 
-### Success Metrics
-- [ ] Question 1 properly detected with full text
-- [ ] All numbered sub-statements included in question body
-- [ ] Options properly extracted
-- [ ] Answers cleanly separated from explanations
-- [ ] No text bleeding between questions
+1. **PHASE 1 - Layout Detection** (Must be first)
+   - `pdf_parser.py` - Layout detection
+   - `config.py` - Layout configuration
+   
+2. **PHASE 2 - Signal-Based Question Detection**
+   - `config.py` - Signal configuration
+   - `heuristics/patterns.py` - Pattern functions
+   - `orchestrator.py` - Signal combination
+   
+3. **PHASE 3 - Text Flow**
+   - `orchestrator.py` - Reading order logic
+   
+4. **PHASE 4 - Answer Detection**
+   - `config.py` - Answer patterns
+   - `heuristics/patterns.py` - Answer functions
+   - `orchestrator.py` - State machine
 
-## Files to Modify (Priority Order)
+## Key Design Principles (Based on User Feedback)
 
-1. **HIGH PRIORITY**
-   - `orchestrator.py` - Core assembly logic
-   - `heuristics/patterns.py` - Pattern detection
-   - `config.py` - Pattern configurations
+1. **Configuration-Driven**: All detection parameters should be user-configurable
+2. **Signal-Based**: Use multiple signals with configurable weights
+3. **Layout-First**: Layout detection provides context for all other processing
+4. **Flexible Patterns**: Generic pattern functions that work on any block
+5. **Question Boundary Focus**: Emphasize detecting where questions begin and end
+6. **Handle Nested Content**: Properly handle numbered sub-statements within questions
 
-2. **MEDIUM PRIORITY**
-   - `heuristics/spacing.py` - Spacing thresholds
-   - `heuristics/layout.py` - Bold detection refinement
-
-3. **LOW PRIORITY**
-   - `pdf_parser.py` - Column detection (already improved)
-   - `data_models.py` - Structure enhancements if needed
-
-## Rollback Plan
-- Keep backup of current working files
-- Implement changes incrementally with testing at each step
-- Have rollback points after each phase
-
-## Notes
-- Focus on proper text flow first as it affects all other detection
-- Bold detection and spacing are already enhanced from previous work
-- Need to balance precision vs recall in question detection
-- Test with multiple PDF layouts to ensure robustness
+## Success Metrics
+- [ ] Question 1 properly detected with "Consider the following statements:"
+- [ ] All numbered sub-statements (1., 2., 3.) included in question body
+- [ ] Clean separation between questions
+- [ ] Proper column-aware text flow
+- [ ] Configurable detection parameters working correctly

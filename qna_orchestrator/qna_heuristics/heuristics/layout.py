@@ -2,6 +2,37 @@
 from typing import Dict, Any, Optional
 from qna_orchestrator.qna_heuristics.data_models import AnalysisContext
 
+def analyze_block_layout(context: AnalysisContext) -> Optional[Dict[str, Any]]:
+    """
+    Analyzes the spatial relationship of a block with its neighbors.
+    """
+    current_block = context.current_block
+    prev_block = context.previous_block
+
+    if not prev_block:
+        return {
+            "heuristic_name": "layout_analysis",
+            "is_first_block": True,
+            "vertical_gap_from_prev": None,
+            "horizontal_alignment_with_prev": "N/A"
+        }
+
+    v_gap = current_block.bbox[1] - prev_block.bbox[3]
+    h_gap = current_block.bbox[0] - prev_block.bbox[0]
+    
+    h_alignment = "aligned"
+    if abs(h_gap) > 5:
+        h_alignment = "indented" if h_gap > 0 else "outdented"
+
+    return {
+        "heuristic_name": "layout_analysis",
+        "is_first_block": False,
+        "vertical_gap_from_prev": round(v_gap, 2),
+        "horizontal_gap_from_prev": round(h_gap, 2),
+        "horizontal_alignment_with_prev": h_alignment
+    }
+
+
 def analyze_indentation(context: AnalysisContext) -> Optional[Dict[str, Any]]:
     """Checks if a block is indented relative to the column's minimum x-coordinate."""
     cfg = context.config['HEURISTICS']['LAYOUT']
