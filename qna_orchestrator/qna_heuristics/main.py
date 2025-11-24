@@ -8,25 +8,37 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from qna_orchestrator.qna_heuristics.orchestrator import Orchestrator
-# from qna_orchestrator.qna_heuristics.config import get_config
+from qna_orchestrator.qna_heuristics.conf import load_config
 
 def main():
     """
     Main entry point for the document processing script.
-    Usage: python main.py [path_to_pdf]
+    Usage: python main.py [path_to_pdf] [--parser parser_name]
     """
     print("--- MCQ Extraction Process Starting ---")
 
-    # The Orchestrator loads its default config, including the default PDF path.
-    # We can override it with a command-line argument.
-    orchestrator = Orchestrator()
+    # Parse command line arguments
+    import argparse
+    parser = argparse.ArgumentParser(description='Extract MCQs from PDF documents')
+    parser.add_argument('pdf_path', nargs='?', help='Path to PDF file')
+    parser.add_argument('--profile', default='default',
+                        help='Configuration profile (e.g., vision_ias, forum_ias)')
 
-    pdf_path = orchestrator.config.get("PDF_PATH")
-    if len(sys.argv) > 1:
-        pdf_path = sys.argv[1]
-        print(f"Using PDF path from command line: {pdf_path}")
-    else:
-        print(f"Using default PDF path from config: {pdf_path}")
+    args = parser.parse_args()
+
+    # 1. Load the specific configuration
+    config = load_config(args.profile)
+
+    # 2. Inject PDF path if provided
+    if args.pdf_path:
+        config["PDF_PATH"] = args.pdf_path
+
+    # 3. Initialize Orchestrator with the loaded config
+    orchestrator = Orchestrator(full_config=config)
+
+    pdf_path = config.get("PDF_PATH", "./data_dir/document.pdf")
+    print(f"Using PDF path: {pdf_path}")
+    print(f"Using profile: {args.profile}")
 
     try:
         # The run method executes all phases and saves intermediate files

@@ -4,7 +4,7 @@ import os
 import json
 from copy import deepcopy
 from typing import Dict, Any, List, Optional
-from qna_orchestrator.qna_heuristics.config import get_config
+from qna_orchestrator.qna_heuristics.conf import load_config
 from qna_orchestrator.qna_heuristics.data_models import Document, MCQ, TextBlock, Page, BaseParser
 from qna_orchestrator.qna_heuristics.parser_factory import ParserFactory
 
@@ -12,20 +12,20 @@ from qna_orchestrator.qna_heuristics.parser_factory import ParserFactory
 class Orchestrator:
     def __init__(
         self,
-        config_overrides: Optional[Dict] = None,
+        full_config: Optional[Dict] = None,
         parser: Optional[BaseParser] = None
     ):
         """
         Initialize the Orchestrator.
-        
+
         Args:
-            config_overrides: Optional config overrides
+            full_config: Full configuration dictionary. If not provided, uses default config.
             parser: Optional custom parser. If not provided, uses default parser.
-        
+
         Example:
             # Use default parser
             orchestrator = Orchestrator()
-            
+
             # Use custom parser
             custom_parser = ParserFactory.create_custom(
                 extraction=MyExtractor(config),
@@ -35,10 +35,10 @@ class Orchestrator:
             )
             orchestrator = Orchestrator(parser=custom_parser)
         """
-        self.config = deepcopy(get_config())
-        if config_overrides:
-            # A more robust implementation would merge nested dicts
-            self.config.update(config_overrides)
+        if full_config:
+            self.config = deepcopy(full_config)
+        else:
+            self.config = load_config()
         
         # Use provided parser or create from config
         if parser:
