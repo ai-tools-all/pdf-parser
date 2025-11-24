@@ -1,0 +1,31 @@
+# Implementation Notes - pp-011
+
+## Summary
+Implemented pluggable OCR pipeline with Strategy pattern.
+
+## Providers Implemented
+- **PaddleOCR**: Fast, accurate, runs locally (requires `paddlepaddle paddleocr`)
+- **OpenAI Vision API**: Cloud-based, high accuracy (requires `openai`, `OPENAI_API_KEY`)
+
+Note: Changed from original plan (Tesseract/EasyOCR) to PaddleOCR/OpenAI for better accuracy.
+
+## Files Created
+- `strategies/ocr.py` - OCRProvider ABC, OCRResult dataclass, OCRProviderRegistry
+- `strategies/implementations/paddle_ocr_provider.py`
+- `strategies/implementations/openai_ocr_provider.py`
+- `tests/test_ocr.py`
+
+## Configuration
+Added `OCR` section to config.py with provider-specific settings.
+Disabled by default (`AUTO_OCR_ENABLED: False`).
+
+## Usage (for future integration)
+```python
+from qna_orchestrator.qna_heuristics.strategies import get_ocr_provider
+
+provider = get_ocr_provider("paddle", config)
+results = provider.extract_text(pil_image)
+```
+
+## Next Steps
+Integrate into pdf_parser to auto-OCR pages with 0 text but images present.
