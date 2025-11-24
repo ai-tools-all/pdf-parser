@@ -154,6 +154,9 @@ class StructureAssembler:
         if strategy == "vision_gatekeeper":
             self.logger.info("Using Assembly Strategy: Vision Gatekeeper (Option d Sequential)")
             return self._assemble_vision_gatekeeper(doc)
+        elif strategy == "vision_solutions":
+            self.logger.info("Using Assembly Strategy: Vision Solutions (Header-Based Extraction)")
+            return self._assemble_vision_solutions(doc)
         else:
             self.logger.info("Using Assembly Strategy: Default Sequential")
             return self._assemble_default(doc)
@@ -380,6 +383,82 @@ class StructureAssembler:
             mcqs.append(current_mcq)
 
         return self._post_process_mcqs(mcqs)
+
+    def _assemble_vision_solutions(self, doc: Document) -> List[MCQ]:
+        """
+        Vision IAS Solutions Strategy:
+        Treats "Q X.Y" as hard splitter where X is question number and Y is correct answer.
+        Everything following that header (until next header) is the Explanation.
+        
+        Example: "Q 1.C The Citizenship Act..." -> Q#1, Answer: c, Explanation: "The Citizenship Act..."
+        """
+        mcqs = []
+        all_blocks = []
+        
+        # Flatten blocks (Reading Order: top-to-bottom, left-to-right)
+        for page in doc.pages:
+            # Vision Solutions usually run single column or flow naturally
+            # We strictly sort top-to-bottom, left-to-right
+            page_blocks = page.left_column_blocks + page.right_column_blocks + page.other_blocks
+            all_blocks.extend(sorted(page_blocks, key=lambda b: (b.bbox[1], b.bbox[0])))
+
+        current_mcq = None
+        
+        # Regex: Q [Num].[Option]
+        # e.g. "Q 1.C" -> Num=1, Ans=C
+        header_regex = self.config.get("HEURISTICS", {}).get("PATTERNS", {}).get("REGEX_SOLUTION_HEADER")
+        if not header_regex:
+            self.logger.error("REGEX_SOLUTION_HEADER not found in config")
+            return []
+        
+        header_pattern = re.compile(header_regex, re.IGNORECASE)
+
+        for block in all_blocks:
+            text = block.text.strip()
+            if not text:
+                continue
+
+            match = header_pattern.match(text)
+            
+            if match:
+                # Found "Q 1.C"
+                if current_mcq:
+                    mcqs.append(current_mcq)
+                
+                q_num = int(match.group(1))
+                correct_ans = match.group(2).lower()  # 'c'
+                
+                # Start new MCQ object (Question text blank, Options blank)
+                current_mcq = MCQ(
+                    question_number=q_num,
+                    question_text="",
+                    answer=correct_ans,
+                    explanation=""
+                )
+                
+                # If there is text *after* "Q 1.C" in the same block, add it to explanation
+                # e.g., "Q 1.C The Citizenship Act..."
+                remaining_text = header_pattern.sub('', text).strip()
+                if remaining_text:
+                    current_mcq.explanation = remaining_text
+
+            elif current_mcq:
+                # It's part of the explanation
+                current_mcq.explanation += f" {text}"
+
+        # Save last MCQ
+        if current_mcq:
+            mcqs.append(current_mcq)
+
+        return self._post_process_solutions(mcqs)
+
+    def _post_process_solutions(self, mcqs):
+        """Helper to clean up extra spaces in solutions"""
+        for mcq in mcqs:
+            if mcq.explanation:
+                # Cleanup spaces
+                mcq.explanation = ' '.join(mcq.explanation.split())
+        return mcqs
 
     def _post_process_mcqs(self, mcqs):
         """Helper to clean up extra spaces"""
