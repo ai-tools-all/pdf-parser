@@ -2,11 +2,13 @@
 import re 
 import os
 import json
+import logging
 from copy import deepcopy
 from typing import Dict, Any, List, Optional
 from qna_orchestrator.qna_heuristics.conf import load_config
 from qna_orchestrator.qna_heuristics.data_models import Document, MCQ, TextBlock, Page, BaseParser
 from qna_orchestrator.qna_heuristics.parser_factory import ParserFactory
+from qna_orchestrator.qna_heuristics.utils.output_manager import OutputManager
 
 
 class Orchestrator:
@@ -46,23 +48,10 @@ class Orchestrator:
         else:
             self.parser = ParserFactory.create_from_config(self.config)
         
-        os.makedirs(self.config["OUTPUT_DIR"], exist_ok=True)
+        # OutputManager is initialized in run() because we need pdf_path
+        self.output_manager = None
 
-    def _save_json(self, data, filename):
-        if not self.config["DEBUG_SAVE_INTERMEDIATE"]:
-            return
-        
-        # Custom JSON encoder for dataclasses
-        class DataClassEncoder(json.JSONEncoder):
-            def default(self, o):
-                if hasattr(o, '__dict__'):
-                    return o.__dict__
-                return super().default(o)
-        
-        path = os.path.join(self.config["OUTPUT_DIR"], filename)
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, cls=DataClassEncoder, indent=2)
-        print(f"Saved intermediate file: {path}")
+
 
     def run(self, pdf_path: str) -> List[MCQ]:
         """
@@ -78,23 +67,50 @@ class Orchestrator:
         Returns:
             List of extracted MCQ objects
         """
-        # --- Phase 1: Parse PDF (extraction + layout + analysis) ---
-        print("Phase 1: Parsing and analyzing PDF...")
-        doc = self.parser.parse(pdf_path)
-        self._save_json(doc, "01_analyzed_document.json")
-        
-        # --- Phase 2: Assemble MCQs ---
-        print("Phase 2: Assembling MCQs...")
-        assembler = StructureAssembler(self.config)
-        mcqs = assembler.assemble(doc)
-        self._save_json(mcqs, "02_final_mcqs.json")
+        # Initialize Output Manager
+        self.output_manager = OutputManager(
+            self.config["OUTPUT_DIR"], 
+            pdf_path, 
+            self.config
+        )
+        logger = self.output_manager.logger
 
-        print(f"\nExtraction complete. Found {len(mcqs)} MCQs.")
-        return mcqs
+        try:
+            # --- Phase 1: Parse PDF (extraction + layout + analysis) ---
+            logger.info(f"Starting parsing for: {pdf_path}")
+            doc = self.parser.parse(pdf_path)
+            
+            if self.config.get("SAVE_INTERMEDIATE_JSON"):
+                self.output_manager.save_json(doc, "intermediate_analysis.json")
+            
+            # --- Phase 2: Assemble MCQs ---
+            logger.info("Assembling MCQs...")
+            
+            # Pass logger to Assembler
+            assembler = StructureAssembler(self.config, logger)
+            mcqs = assembler.assemble(doc)
+            
+            # --- Output ---
+            self.output_manager.save_json(mcqs, "parsed_questions.json")
+            
+            # Save Metadata
+            stats = {
+                "total_questions": len(mcqs),
+                "total_pages": len(doc.pages)
+            }
+            self.output_manager.save_metadata(stats)
+            
+            logger.info(f"Completed. Extracted {len(mcqs)} MCQs.")
+            return mcqs
+
+        except Exception as e:
+            logger.error(f"Orchestrator Failed: {e}", exc_info=True)
+            raise
 
 class StructureAssembler:
-    def __init__(self, config):
+    def __init__(self, config, logger=None):
         self.config = config
+        self.logger = logger or logging.getLogger("Dummy")
         self.last_option_key = None
 
     def _get_analysis(self, block: TextBlock, heuristic_name: str, key: str, default=None):
@@ -136,10 +152,10 @@ class StructureAssembler:
         strategy = self.config.get("ASSEMBLY_STRATEGY", "default")
         
         if strategy == "vision_gatekeeper":
-            print("Using Assembly Strategy: Vision Gatekeeper (Option d Sequential)")
+            self.logger.info("Using Assembly Strategy: Vision Gatekeeper (Option d Sequential)")
             return self._assemble_vision_gatekeeper(doc)
         else:
-            print("Using Assembly Strategy: Default Sequential")
+            self.logger.info("Using Assembly Strategy: Default Sequential")
             return self._assemble_default(doc)
 
     def _assemble_vision_gatekeeper(self, doc: Document) -> List[MCQ]:
@@ -311,7 +327,7 @@ class StructureAssembler:
                 
                 # GAP RECOVERY: Did we miss one? (e.g. looking for 6, found 7)
                 elif found_num == expected_q_num + 1:
-                    print(f"⚠️  Warning: Missed Question {expected_q_num}, jumping to {found_num}")
+                    self.logger.warning(f"Missed Question {expected_q_num}, jumping to {found_num}")
                     expected_q_num = found_num # Sync up
                     is_question_start = True
             

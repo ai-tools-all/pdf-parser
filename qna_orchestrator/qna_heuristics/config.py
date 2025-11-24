@@ -9,6 +9,10 @@ DEFAULT_CONFIG = {
     "OUTPUT_DIR": "./output",
     "PDF_PATH": "./data_dir/document.pdf", # Default path, can be overridden
 
+    # Output Management
+    "ENABLE_CONSOLE_LOGGING": True,  # Enable console logging in addition to file logging
+    "SAVE_INTERMEDIATE_JSON": True,  # Save intermediate analysis data for debugging
+
     # Default parser to use (can be overridden per run)
     "DEFAULT_PARSER": "vision_ias_questions",
 
@@ -59,11 +63,9 @@ DEFAULT_CONFIG = {
             "type": "heuristic_based",
             "SKIP_PAGES": [1],  # Skip page 1 (instructions page, 1-indexed)
             "ACTIVE_HEURISTICS": [
-                # Run Clustering FIRST to establish boundaries
-                "qna_orchestrator.qna_heuristics.heuristics.clustering.detect_cluster_break",
+                # Sequential parser uses basic signals - Assembler does the heavy lifting
                 "qna_orchestrator.qna_heuristics.heuristics.patterns.detect_question_start_enhanced",
                 "qna_orchestrator.qna_heuristics.heuristics.patterns.classify_content_type",
-                "qna_orchestrator.qna_heuristics.heuristics.layout.sequence_column_content",
             ]
         }
     },
