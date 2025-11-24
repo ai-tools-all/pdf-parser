@@ -1,6 +1,6 @@
 # in data_models.py
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Protocol
 
 @dataclass
 class TextBlock:
@@ -61,3 +61,19 @@ class AnalysisContext:
         self.config = config
         self.page_data = page_data
         self.previous_analysis = previous_analysis
+
+
+class BaseParser(Protocol):
+    """Protocol for PDF parsers that can extract and analyze documents."""
+
+    def parse(self, pdf_path: str) -> Document:
+        """
+        Parse a PDF document and return a structured Document object.
+
+        Args:
+            pdf_path: Path to the PDF file
+
+        Returns:
+            Document: Parsed and analyzed document
+        """
+        ...
