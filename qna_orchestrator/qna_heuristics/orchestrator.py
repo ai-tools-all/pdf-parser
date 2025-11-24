@@ -2,40 +2,51 @@
 import re 
 import os
 import json
-import importlib
-import statistics
 from copy import deepcopy
 from typing import Dict, Any, List, Optional
 from qna_orchestrator.qna_heuristics.config import get_config
-from qna_orchestrator.qna_heuristics.pdf_parser import PDFParser
-from qna_orchestrator.qna_heuristics.data_models import Document, MCQ, TextBlock, AnalysisContext, Page
-from qna_orchestrator.qna_heuristics.heuristics.layout import analyze_block_layout
+from qna_orchestrator.qna_heuristics.data_models import Document, MCQ, TextBlock, Page, BaseParser
+from qna_orchestrator.qna_heuristics.parser_factory import ParserFactory
 
 
 class Orchestrator:
-    def __init__(self, config_overrides: Optional[Dict] = None):
+    def __init__(
+        self,
+        config_overrides: Optional[Dict] = None,
+        parser: Optional[BaseParser] = None
+    ):
+        """
+        Initialize the Orchestrator.
+        
+        Args:
+            config_overrides: Optional config overrides
+            parser: Optional custom parser. If not provided, uses default parser.
+        
+        Example:
+            # Use default parser
+            orchestrator = Orchestrator()
+            
+            # Use custom parser
+            custom_parser = ParserFactory.create_custom(
+                extraction=MyExtractor(config),
+                layout=MyLayout(config),
+                analysis=MyAnalyzer(config),
+                config=config
+            )
+            orchestrator = Orchestrator(parser=custom_parser)
+        """
         self.config = deepcopy(get_config())
         if config_overrides:
             # A more robust implementation would merge nested dicts
             self.config.update(config_overrides)
         
-        self.heuristics = self._load_heuristics()
-        self.heuristics.append(analyze_block_layout)  # Add the new heuristic
-        from qna_orchestrator.qna_heuristics.heuristics.question_start import is_question_start
-        self.heuristics.append(is_question_start)
+        # Use provided parser or create default
+        if parser:
+            self.parser = parser
+        else:
+            self.parser = ParserFactory.create_default(self.config)
+        
         os.makedirs(self.config["OUTPUT_DIR"], exist_ok=True)
-
-    def _load_heuristics(self):
-        loaded_funcs = []
-        for path in self.config["ACTIVE_HEURISTICS"]:
-            module_path, func_name = path.rsplit('.', 1)
-            try:
-                module = importlib.import_module(module_path)
-                func = getattr(module, func_name)
-                loaded_funcs.append(func)
-            except (ImportError, AttributeError) as e:
-                print(f"Warning: Could not load heuristic '{path}': {e}")
-        return loaded_funcs
 
     def _save_json(self, data, filename):
         if not self.config["DEBUG_SAVE_INTERMEDIATE"]:
@@ -54,73 +65,32 @@ class Orchestrator:
         print(f"Saved intermediate file: {path}")
 
     def run(self, pdf_path: str) -> List[MCQ]:
-        # --- Phase 1: Parsing ---
-        print("Phase 1: Parsing PDF...")
-        parser = PDFParser(self.config)
-        doc = parser.parse(pdf_path)
-        self._save_json(doc, "01_raw_document.json")
-
-        # --- Phase 2: Analysis ---
-        print("Phase 2: Applying heuristics...")
-        analyzed_doc = self._run_analysis(doc)
-        self._save_json(analyzed_doc, "02_analyzed_document.json")
+        """
+        Run the complete MCQ extraction pipeline.
         
-        # --- Phase 3: Assembly ---
-        print("Phase 3: Assembling MCQs...")
+        Pipeline:
+        1. Parse PDF (extract + layout + analyze) - done by parser
+        2. Assemble MCQs from analyzed document
+        
+        Args:
+            pdf_path: Path to PDF file
+            
+        Returns:
+            List of extracted MCQ objects
+        """
+        # --- Phase 1: Parse PDF (extraction + layout + analysis) ---
+        print("Phase 1: Parsing and analyzing PDF...")
+        doc = self.parser.parse(pdf_path)
+        self._save_json(doc, "01_analyzed_document.json")
+        
+        # --- Phase 2: Assemble MCQs ---
+        print("Phase 2: Assembling MCQs...")
         assembler = StructureAssembler(self.config)
-        mcqs = assembler.assemble(analyzed_doc)
-        self._save_json(mcqs, "03_final_mcqs.json")
+        mcqs = assembler.assemble(doc)
+        self._save_json(mcqs, "02_final_mcqs.json")
 
         print(f"\nExtraction complete. Found {len(mcqs)} MCQs.")
         return mcqs
-
-    def _run_analysis(self, doc: Document) -> Document:
-        analyzed_doc = deepcopy(doc)
-        for page in analyzed_doc.pages:
-            # Analyze left and right columns separately
-            self._analyze_scope(page.left_column_blocks, page)
-            self._analyze_scope(page.right_column_blocks, page)
-        return analyzed_doc
-
-    def _analyze_scope(self, blocks: List[TextBlock], page: Page):
-        if not blocks:
-            return
-            
-        # Pre-calculate scope-wide metrics
-        cfg = self.config['HEURISTICS']['SPACING']
-        gaps = [blocks[i].bbox[1] - blocks[i-1].bbox[3] for i in range(1, len(blocks))]
-        normal_gaps = [g for g in gaps if cfg['MIN_GAP_FOR_NORMAL_SPACING'] < g < cfg['MAX_GAP_FOR_NORMAL_SPACING']]
-        median_spacing = statistics.median(normal_gaps) if normal_gaps else 5.0
-        min_x = min(b.bbox[0] for b in blocks)
-        
-        # Calculate median font size for enhanced font detection
-        font_sizes = [b.font_size for b in blocks if b.font_size > 0]
-        median_font_size = statistics.median(font_sizes) if font_sizes else 12.0
-
-        previous_analysis = None
-        for i, block in enumerate(blocks):
-            prev_block = blocks[i-1] if i > 0 else None
-            context = AnalysisContext(
-                current_block=block,
-                previous_block=prev_block,
-                all_blocks_in_scope=blocks,
-                scope_median_spacing=median_spacing,
-                scope_min_x=min_x,
-                scope_median_font_size=median_font_size,
-                config=self.config,
-                page_data=page,
-                previous_analysis=previous_analysis
-            )
-            
-            # Reset for the current block
-            current_block_analysis = {}
-            for heuristic_func in self.heuristics:
-                result = heuristic_func(context)
-                if result:
-                    block.analysis_results.append(result)
-                    current_block_analysis.update(result)
-            
-            previous_analysis = current_block_analysis
 
 class StructureAssembler:
     def __init__(self, config):
