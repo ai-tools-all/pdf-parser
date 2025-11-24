@@ -36,9 +36,17 @@ def setup_logger():
     return logging.getLogger("BatchVisionPair")
 
 
-def find_pdf_pair(directory: Path, prefix: str) -> Tuple[Optional[Path], Optional[Path]]:
+def find_pdf_pair(directory: Path, prefix: str, 
+                  question_suffix: str = "question", 
+                  solution_suffix: str = "solution") -> Tuple[Optional[Path], Optional[Path]]:
     """
     Find question and solution PDFs matching the given prefix.
+    
+    Args:
+        directory: Directory to search in
+        prefix: The prefix to match (e.g., "Test-001")
+        question_suffix: Pattern to identify question papers (default: "question")
+        solution_suffix: Pattern to identify solutions (default: "solution")
     
     Returns:
         Tuple of (question_pdf, solution_pdf) or (None, None) if not found
@@ -51,15 +59,17 @@ def find_pdf_pair(directory: Path, prefix: str) -> Tuple[Optional[Path], Optiona
         # Skip Hindi versions and other variants
         if "hindi" in fname_lower or "darkhorse" in fname_lower:
             continue
-        if "question" in fname_lower:
+        if question_suffix.lower() in fname_lower:
             question_pdf = f
-        elif "solution" in fname_lower:
+        elif solution_suffix.lower() in fname_lower:
             solution_pdf = f
     
     return question_pdf, solution_pdf
 
 
-def discover_all_prefixes(directory: Path) -> List[str]:
+def discover_all_prefixes(directory: Path, 
+                          question_suffix: str = "question",
+                          solution_suffix: str = "solution") -> List[str]:
     """
     Discover all unique prefixes in the directory.
     
@@ -67,11 +77,13 @@ def discover_all_prefixes(directory: Path) -> List[str]:
     """
     prefixes = set()
     
-    # Pattern to extract prefix (e.g., VP_TEST-01 from VP_TEST-01_question_paper.pdf)
-    pattern = re.compile(r'^(.+?)_(?:question|solution)', re.IGNORECASE)
+    # Build pattern dynamically from suffixes
+    # e.g., for "qp" and "none", matches Test-001 from Test-001_1__qp.pdf or Test-001_none.pdf
+    suffixes = f"{question_suffix}|{solution_suffix}"
+    pattern = re.compile(rf'^(.+?)_(?:.*_)?(?:{suffixes})', re.IGNORECASE)
     
     for f in directory.glob("*.pdf"):
-        match = pattern.match(f.name)
+        match = pattern.match(f.stem)  # Use stem to exclude .pdf
         if match:
             prefixes.add(match.group(1))
     
@@ -146,6 +158,10 @@ Examples:
                         help="Output directory (default: ./output/merged_exams)")
     parser.add_argument('--dry-run', action='store_true', 
                         help="Show what would be processed without actually processing")
+    parser.add_argument('--question-suffix', default="question",
+                        help="Suffix pattern for question papers (default: question)")
+    parser.add_argument('--solution-suffix', default="solution",
+                        help="Suffix pattern for solutions (default: solution)")
     
     args = parser.parse_args()
     logger = setup_logger()
@@ -158,10 +174,13 @@ Examples:
     output_dir = Path(args.output_dir)
     
     # Determine prefixes to process
+    q_suffix = args.question_suffix
+    s_suffix = args.solution_suffix
+    
     if args.prefix:
         prefixes = [args.prefix]
     elif args.all:
-        prefixes = discover_all_prefixes(directory)
+        prefixes = discover_all_prefixes(directory, q_suffix, s_suffix)
         logger.info(f"Discovered {len(prefixes)} prefixes: {prefixes}")
     else:
         parser.error("Either --prefix or --all must be specified")
@@ -175,7 +194,7 @@ Examples:
         logger.info(f"Processing: {prefix}")
         logger.info(f"{'='*60}")
         
-        q_pdf, s_pdf = find_pdf_pair(directory, prefix)
+        q_pdf, s_pdf = find_pdf_pair(directory, prefix, q_suffix, s_suffix)
         
         if not q_pdf:
             logger.warning(f"  No question PDF found for prefix: {prefix}")

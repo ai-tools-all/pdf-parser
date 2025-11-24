@@ -145,6 +145,35 @@ DEFAULT_CONFIG = {
             # A typical question has 50-100 words, so min cluster size of 15-20 is reasonable
             "MIN_CLUSTER_SIZE": 15
         }
+    },
+
+    # OCR Configuration - for image-based PDF pages
+    "OCR": {
+        # Default OCR provider: "paddle", "openai"
+        "DEFAULT_PROVIDER": "paddle",
+        
+        # Enable auto-OCR for pages with no text but images present
+        "AUTO_OCR_ENABLED": False,
+        
+        # Minimum confidence threshold for OCR results (0.0 - 1.0)
+        "MIN_CONFIDENCE": 0.5,
+        
+        # PaddleOCR specific settings
+        "PADDLE": {
+            "use_angle_cls": True,   # Enable text angle detection
+            "lang": "en",            # Language code
+            "use_gpu": False,        # Use GPU acceleration
+            "show_log": False,       # Show PaddleOCR logs
+        },
+        
+        # OpenAI Vision API specific settings
+        "OPENAI": {
+            # API key - can also use OPENAI_API_KEY env var
+            "api_key": None,
+            "model": "gpt-4o-mini",  # Model to use for OCR
+            "max_tokens": 4096,      # Max tokens for response
+            "detail": "high",        # Image detail level: "low", "high", "auto"
+        },
     }
 }
 
