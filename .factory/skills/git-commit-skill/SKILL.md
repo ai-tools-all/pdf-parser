@@ -20,15 +20,10 @@ Selectively stage files modified by the agent in the current workflow and commit
     *   Run `git diff --staged --name-only` to confirm the correct files are staged.
     *   If the output is empty, inform the user that no files matched the session changes and stop.
 
-3.  **Check for Beads Issue**
-    *   Run `beads list --status in_progress --json` to check if there's an active issue.
-    *   If the command succeeds and returns an issue, extract the issue ID (e.g., `bd-001`, `hd-002`).
-    *   If the command fails (beads not initialized or not available), proceed without issue number.
-
-4.  **Generate Meaningful Commit Message**
+3.  **Generate Meaningful Commit Message**
     *   Run `git diff --staged` to analyze the actual code changes.
     *   Draft a commit message using the **Conventional Commits** format: `type(scope): description`.
-    *   **If a beads issue was found**: Include the issue ID in the description like: `type(scope): [issue-id] description`
+    *   **If a beads issue is available in session history**: Include the issue ID in the description like: `type(scope): [issue-id] description`
     *   **Guidelines for "Meaningful":**
         *   **Type**: Use `feat`, `fix`, `refactor`, `docs`, `style`, or `chore`.
         *   **Scope**: The module or file affected (e.g., `auth`, `navbar`, `utils`).
@@ -49,6 +44,6 @@ Selectively stage files modified by the agent in the current workflow and commit
         - Cleared local storage on logout
         ```
 
-5.  **Execute Commit**
+4.  **Execute Commit**
     *   Run `git commit -m "<message>"`.
     *   Return the commit hash and the full message to the user.
