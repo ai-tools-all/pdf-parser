@@ -18,6 +18,37 @@ def analyze_indentation(context: AnalysisContext) -> Optional[Dict[str, Any]]:
         }
     return None
 
+
+def determine_reading_order(left_sorted, right_sorted, current_block):
+    # This is a placeholder. A more sophisticated implementation would be needed
+    # to handle complex layouts.
+    if current_block in left_sorted:
+        return left_sorted.index(current_block)
+    elif current_block in right_sorted:
+        return len(left_sorted) + right_sorted.index(current_block)
+    return -1
+
+def sequence_column_content(context: AnalysisContext) -> Optional[Dict]:
+    """Ensure proper sequencing of two-column content"""
+    
+    # Get all blocks in current scope
+    left_blocks = context.page_data.left_column_blocks if context.page_data else []
+    right_blocks = context.page_data.right_column_blocks if context.page_data else []
+    
+    # Sort by vertical position within each column
+    left_sorted = sorted(left_blocks, key=lambda b: b.bbox[1])
+    right_sorted = sorted(right_blocks, key=lambda b: b.bbox[1])
+    
+    # Determine reading order based on vertical alignment
+    current_block = context.current_block
+    
+    return {
+        "heuristic_name": "column_sequencing",
+        "column": "left" if current_block in left_blocks else "right",
+        "reading_order": determine_reading_order(left_sorted, right_sorted, current_block),
+        "confidence": 0.9
+    }
+
 def analyze_font_style(context: AnalysisContext) -> Optional[Dict[str, Any]]:
     """
     Enhanced font analysis for question boundary detection.

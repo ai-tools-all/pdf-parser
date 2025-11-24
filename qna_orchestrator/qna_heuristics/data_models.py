@@ -48,7 +48,9 @@ class AnalysisContext:
         scope_median_spacing: float,
         scope_min_x: float,
         scope_median_font_size: float,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        page_data: Optional[Page] = None,
+        previous_analysis: Optional[Dict[str, Any]] = None
     ):
         self.current_block = current_block
         self.previous_block = previous_block
@@ -57,3 +59,5 @@ class AnalysisContext:
         self.scope_min_x = scope_min_x
         self.scope_median_font_size = scope_median_font_size
         self.config = config
+        self.page_data = page_data
+        self.previous_analysis = previous_analysis

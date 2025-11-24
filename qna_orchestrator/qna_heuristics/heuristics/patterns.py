@@ -3,71 +3,82 @@ import re
 from typing import Dict, Any, Optional
 from qna_orchestrator.qna_heuristics.data_models import AnalysisContext
 
-def analyze_question_number(context: AnalysisContext) -> Optional[Dict[str, Any]]:
-    """Checks if a block starts with a question number pattern."""
-    regex = context.config['HEURISTICS']['PATTERNS']['REGEX_QUESTION']
-    match = re.match(regex, context.current_block.text)
-    if match:
-        return {
-            "heuristic_name": "pattern_match",
-            "type": "question_start",
-            "value": int(match.group(1))
-        }
-    return None
 
-def analyze_option_letter(context: AnalysisContext) -> Optional[Dict[str, Any]]:
-    """Checks if a block starts with an option letter like (a)."""
-    regex = context.config['HEURISTICS']['PATTERNS']['REGEX_OPTION']
-    match = re.match(regex, context.current_block.text)
-    if match:
-        return {
-            "heuristic_name": "pattern_match",
-            "type": "option",
-            "value": match.group(1).lower()
-        }
-    return None
 
-def analyze_answer_marker(context: AnalysisContext) -> Optional[Dict[str, Any]]:
-    """Checks if a block starts with an answer marker like Ans: (c)."""
-    regex = context.config['HEURISTICS']['PATTERNS']['REGEX_ANSWER']
-    match = re.match(regex, context.current_block.text, re.IGNORECASE)
+
+def classify_content_type(context: AnalysisContext) -> Optional[Dict]:
+    """Classify text blocks into content types"""
+    block = context.current_block
+    text = block.text.strip()
+    
+    # Question content (bold + question patterns)
+    if 'bold' in block.font_name.lower() and any(pattern in text.lower() 
+                                                for pattern in ['consider', 'which', 'with reference']):
+        return {"heuristic_name": "content_classification", "type": "question", "confidence": 0.9}
+    
+    # Option content (a), b), c), d) patterns)
+    option_pattern = r'^\(?([abcd])\)?\s+'
+    if re.match(option_pattern, text, re.IGNORECASE):
+        return {"heuristic_name": "content_classification", "type": "option", "confidence": 0.85}
+    
+    # Answer marker
+    if re.match(r'^Ans:\s*', text, re.IGNORECASE):
+        return {"heuristic_name": "content_classification", "type": "answer", "confidence": 0.95}
+    
+    # Explanation (indented or following answer)
+    is_indented = block.bbox[0] > context.scope_min_x + 20
+    if is_indented or (context.previous_analysis and context.previous_analysis.get("type") == "answer"):
+        return {"heuristic_name": "content_classification", "type": "explanation", "confidence": 0.7}
+    
+    return {"heuristic_name": "content_classification", "type": "continuation", "confidence": 0.5}
+
+def detect_answer_boundaries(context: AnalysisContext) -> Optional[Dict]:
+    """Detect answer markers and separate from explanations"""
+    block = context.current_block
+    
+    # Pattern: "Ans: (a)" or "Ans: a"
+    ans_pattern = r'^Ans:\s*\(?([abcd]|[1-4])\)?'
+    match = re.match(ans_pattern, block.text.strip(), re.IGNORECASE)
+    
     if match:
+        answer_value = match.group(1).lower()
+        explanation_start = match.end()
+        explanation_text = block.text[explanation_start:].strip()
+        
         return {
-            "heuristic_name": "pattern_match",
+            "heuristic_name": "answer_boundary",
             "type": "answer_marker",
-            "value": match.group(1).lower()
+            "answer": answer_value,
+            "has_explanation": len(explanation_text) > 0,
+            "explanation_text": explanation_text,
+            "confidence": 0.98
         }
+    
     return None
 
-def analyze_descriptive_question_start(context: AnalysisContext) -> Optional[Dict[str, Any]]:
-    """
-    Detects question starts that begin with descriptive text rather than numbers.
-    Common patterns: 'Consider the following', 'Which of the following', etc.
-    """
-    text = context.current_block.text.strip()
+def detect_question_start_enhanced(context: AnalysisContext) -> Optional[Dict]:
+    """Enhanced question start detection using multiple signals"""
+    block = context.current_block
     
-    # Patterns that commonly start MCQ questions
-    descriptive_patterns = [
-        r'^Consider\s+the\s+following',
-        r'^Which\s+of\s+the\s+following',
-        r'^What\s+is\s+the',
-        r'^How\s+many\s+of\s+the',
-        r'^Identify\s+the',
-        r'^Select\s+the',
-        r'^Choose\s+the',
-        r'^Mark\s+the',
-        r'^Find\s+the',
-        r'^Determine\s+the'
-    ]
+    # Signal 1: Bold formatting
+    is_bold = 'bold' in block.font_name.lower() or getattr(block, 'font_weight', 400) > 600
     
-    for pattern in descriptive_patterns:
-        if re.match(pattern, text, re.IGNORECASE):
-            return {
-                "heuristic_name": "pattern_match", 
-                "type": "descriptive_question_start",
-                "pattern": pattern,
-                "confidence": "high"
-            }
+    # Signal 2: Question number pattern
+    question_num_pattern = r'^\d+\.\s*'
+    has_question_number = re.match(question_num_pattern, block.text.strip())
+    
+    # Signal 3: Question keywords
+    question_keywords = ['consider the following', 'which of the following', 'with reference to']
+    has_question_keyword = any(keyword in block.text.lower() for keyword in question_keywords)
+    
+    # Combined detection
+    if is_bold and has_question_number and has_question_keyword:
+        return {
+            "heuristic_name": "enhanced_question_start",
+            "confidence": 0.95,
+            "question_number": has_question_number.group().strip('.\t '),
+            "is_question_start": True
+        }
     
     return None
 

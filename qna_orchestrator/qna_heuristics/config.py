@@ -12,12 +12,11 @@ DEFAULT_CONFIG = {
     # List of heuristic functions to apply during the analysis phase
     # The orchestrator will dynamically import these.
     "ACTIVE_HEURISTICS": [
+        "qna_orchestrator.qna_heuristics.heuristics.patterns.detect_question_start_enhanced",
+        "qna_orchestrator.qna_heuristics.heuristics.patterns.detect_answer_boundaries",
+        "qna_orchestrator.qna_heuristics.heuristics.patterns.classify_content_type",
+        "qna_orchestrator.qna_heuristics.heuristics.layout.sequence_column_content",
         "qna_orchestrator.qna_heuristics.heuristics.spacing.analyze_vertical_break",
-        "qna_orchestrator.qna_heuristics.heuristics.patterns.analyze_question_number",
-        "qna_orchestrator.qna_heuristics.heuristics.patterns.analyze_option_letter",
-        "qna_orchestrator.qna_heuristics.heuristics.patterns.analyze_answer_marker",
-        "qna_orchestrator.qna_heuristics.heuristics.patterns.analyze_descriptive_question_start",
-        "qna_orchestrator.qna_heuristics.heuristics.patterns.analyze_explanation_start",
         "qna_orchestrator.qna_heuristics.heuristics.layout.analyze_indentation",
         "qna_orchestrator.qna_heuristics.heuristics.layout.analyze_font_style",
     ],
