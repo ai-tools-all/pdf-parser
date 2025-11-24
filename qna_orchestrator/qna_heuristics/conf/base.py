@@ -3,6 +3,17 @@
 BASE_CONFIG = {
     "DEBUG_SAVE_INTERMEDIATE": True,
     "OUTPUT_DIR": "./output",
+    
+    # Default parser to use
+    "DEFAULT_PARSER": "default",
+    
+    # Parser configurations
+    "PARSERS": {
+        "default": {
+            "type": "heuristic_based",
+            "SKIP_PAGES": [],
+        }
+    },
 
     # Common/Default Heuristics used by most PDFs
     "ACTIVE_HEURISTICS": [

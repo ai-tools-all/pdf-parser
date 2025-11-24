@@ -63,3 +63,5 @@ venv.bak/
 .Trashes
 ehthumbs.db
 Thumbs.db
+.beads/beads.db
+.beads/docs/

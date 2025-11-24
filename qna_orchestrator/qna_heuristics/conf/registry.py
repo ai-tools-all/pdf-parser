@@ -24,8 +24,8 @@ def load_config(profile_name="default"):
 
     # 2. Try to import the specific profile
     try:
-        # Use relative import from this module's location
-        module = importlib.import_module(f".profiles.{profile_name}", package=__name__)
+        # Use absolute import path
+        module = importlib.import_module(f"qna_orchestrator.qna_heuristics.conf.profiles.{profile_name}")
         profile_data = getattr(module, "PROFILE", {})
 
         # 3. Merge Profile -> Base
@@ -33,7 +33,8 @@ def load_config(profile_name="default"):
 
         print(f"✅ Loaded Configuration Profile: {profile_name}")
 
-    except ImportError:
+    except ImportError as e:
         print(f"⚠️ Profile '{profile_name}' not found. Using Base Config.")
+        print(f"   Import error: {e}")
 
     return config

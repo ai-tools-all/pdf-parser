@@ -8,3 +8,8 @@
 {"event_id":"01KAVP15VDY6Q44X0KH55V6J59","ts":"2025-11-24T19:39:12.109Z","op":"update","id":"pp-004","actor":"abhishek","data":{"status":"in_progress"}}
 {"event_id":"01KAVP2YF4B1C873SX47MAKZJZ","ts":"2025-11-24T19:40:10.085Z","op":"create","id":"pp-005","actor":"abhishek","data":{"description":"Create debug_tools.py module with Debugger class for granular parser inspection. Features: 1) MCQ stats and gap detection, 2) Page block inspection with reading order visualization, 3) Question boundary finder to locate specific question starts, 4) PDF visualization with color-coded bounding boxes. Includes CLI interface for all diagnostic actions.","priority":2,"status":"open","title":"Implement Debug Tools Utility for Parser Diagnostics"}}
 {"event_id":"01KAVP3FVAGTBSCCEV0F2Y0W4E","ts":"2025-11-24T19:40:27.882Z","op":"update","id":"pp-004","actor":"abhishek","data":{"status":"closed"}}
+{"event_id":"01KAVPC02CMBEKR27YVMMPPZE0","ts":"2025-11-24T19:45:06.636Z","op":"create","id":"pp-006","actor":"abhishek","data":{"description":"Improve and update Factory Droid skills configuration and documentation","priority":3,"status":"open","title":"Update Factory Droid skills"}}
+{"event_id":"01KAVPCEC1TBG8F6AM4N6CK1SN","ts":"2025-11-24T19:45:21.281Z","op":"update","id":"pp-005","actor":"abhishek","data":{"status":"closed"}}
+{"event_id":"01KAVPCZ5YFMD1DBJ61ZHH88KD","ts":"2025-11-24T19:45:38.494Z","op":"update","id":"pp-006","actor":"abhishek","data":{"status":"in_progress"}}
+{"event_id":"01KAVPEM4GCEE7CNBS0H6K5HBR","ts":"2025-11-24T19:46:32.720Z","op":"update","id":"pp-006","actor":"abhishek","data":{"status":"closed"}}
+{"event_id":"01KAVPGE2XH1JXGVK08TYF481F","ts":"2025-11-24T19:47:32.061Z","op":"update","id":"pp-006","actor":"abhishek","data":{"status":"closed"}}
