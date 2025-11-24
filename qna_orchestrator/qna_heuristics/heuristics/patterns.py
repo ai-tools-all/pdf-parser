@@ -11,10 +11,10 @@ def classify_content_type(context: AnalysisContext) -> Optional[Dict]:
     block = context.current_block
     text = block.text.strip()
     
-    # Question content (bold + question patterns)
-    if 'bold' in block.font_name.lower() and any(pattern in text.lower() 
-                                                for pattern in ['consider', 'which', 'with reference']):
-        return {"heuristic_name": "content_classification", "type": "question", "confidence": 0.9}
+    # Question content (question keywords)
+    question_patterns = ['consider', 'which', 'with reference', 'how many', 'what is', 'who is', 'when did', 'where is', 'why did', 'how did', 'what are', 'which one', 'in which', 'select the']
+    if any(pattern in text.lower() for pattern in question_patterns):
+        return {"heuristic_name": "content_classification", "type": "question", "confidence": 0.8}
     
     # Option content (a), b), c), d) patterns)
     option_pattern = r'^\(?([abcd])\)?\s+'
@@ -57,26 +57,21 @@ def detect_answer_boundaries(context: AnalysisContext) -> Optional[Dict]:
     return None
 
 def detect_question_start_enhanced(context: AnalysisContext) -> Optional[Dict]:
-    """Enhanced question start detection using multiple signals"""
+    """Enhanced question start detection for VisionIAS format."""
     block = context.current_block
     
-    # Signal 1: Bold formatting
-    is_bold = 'bold' in block.font_name.lower() or getattr(block, 'font_weight', 400) > 600
+    # VisionIAS Format: "1. The transition zone..."
+    # We strictly look for the number pattern here.
+    # The 'clustering' check happens in the Assembler.
     
-    # Signal 2: Question number pattern
-    question_num_pattern = r'^\d+\.\s*'
-    has_question_number = re.match(question_num_pattern, block.text.strip())
+    question_num_pattern = r'^\s*(\d{1,3})\.'  # Matches 1. to 999.
+    match = re.match(question_num_pattern, block.text.strip())
     
-    # Signal 3: Question keywords
-    question_keywords = ['consider the following', 'which of the following', 'with reference to']
-    has_question_keyword = any(keyword in block.text.lower() for keyword in question_keywords)
-    
-    # Combined detection
-    if is_bold and has_question_number and has_question_keyword:
+    if match:
         return {
-            "heuristic_name": "enhanced_question_start",
+            "heuristic_name": "question_start",
             "confidence": 0.95,
-            "question_number": has_question_number.group().strip('.\t '),
+            "question_number": match.group(1),
             "is_question_start": True
         }
     

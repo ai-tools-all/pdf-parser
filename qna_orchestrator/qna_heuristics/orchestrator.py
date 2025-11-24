@@ -40,11 +40,11 @@ class Orchestrator:
             # A more robust implementation would merge nested dicts
             self.config.update(config_overrides)
         
-        # Use provided parser or create default
+        # Use provided parser or create from config
         if parser:
             self.parser = parser
         else:
-            self.parser = ParserFactory.create_default(self.config)
+            self.parser = ParserFactory.create_from_config(self.config)
         
         os.makedirs(self.config["OUTPUT_DIR"], exist_ok=True)
 
@@ -131,15 +131,14 @@ class StructureAssembler:
 
     def assemble(self, doc: Document) -> List[MCQ]:
         """
-        Assembles the final list of MCQs from the analyzed document.
-        This version processes each column on each page separately to handle multi-column layouts.
+        Assembles MCQs using hybrid signal: Cluster Break + Question Number Pattern.
+        This ensures accurate question boundaries for VisionIAS format.
         """
         mcqs = []
-        
         all_blocks = []
+        
+        # Flatten blocks in reading order
         for page in doc.pages:
-            # A basic column sequencing. A more sophisticated approach would be needed for complex layouts.
-            # This assumes left column is read top-to-bottom, then right column top-to-bottom.
             all_blocks.extend(sorted(page.left_column_blocks, key=lambda b: b.bbox[1]))
             all_blocks.extend(sorted(page.right_column_blocks, key=lambda b: b.bbox[1]))
 
@@ -148,55 +147,54 @@ class StructureAssembler:
         last_option_key = None
 
         for i, block in enumerate(all_blocks):
-            question_start_analysis = self._get_analysis(block, "question_start", "is_question_start", default=False)
-            if question_start_analysis:
+            
+            # --- EXTRACT ANALYSIS SIGNALS ---
+            # 1. Question Start (Regex)
+            q_start_res = self._get_analysis(block, "question_start", "is_question_start", default=False)
+            q_num_extracted = self._get_analysis(block, "question_start", "question_number")
+            
+            # 2. Cluster Break (HDBSCAN)
+            cluster_res = None
+            for r in block.analysis_results:
+                if r.get("heuristic_name") == "hdbscan_clustering":
+                    cluster_res = r
+                    break
+            
+            is_new_cluster = cluster_res.get("is_new_cluster", False) if cluster_res else False
+            
+            # --- DECISION LOGIC ---
+            
+            # It is a new question if:
+            # A) It's a new cluster AND looks like a number "1." (Strongest Signal)
+            # B) It's the very first block and looks like a number (Start of doc)
+            is_valid_start = (is_new_cluster and q_start_res) or (current_mcq is None and q_start_res)
+
+            if is_valid_start:
+                # Save previous
                 if current_mcq:
                     mcqs.append(current_mcq)
                 
-                q_num = self._get_analysis(block, "question_start", "question_number")
-                current_mcq = MCQ(question_number=q_num, question_text="")
+                # Create New
+                current_mcq = MCQ(question_number=int(q_num_extracted), question_text="")
                 current_part = "question"
                 last_option_key = None
                 
-                # Clean the question number from the text
-                text_to_add = re.sub(r'^\d+\.\s*', '', block.text, 1)
+                # Remove number from text (e.g., "1. Question..." -> "Question...")
+                text_to_add = re.sub(r'^\s*\d+\.\s*', '', block.text, 1)
                 current_mcq.question_text = text_to_add.strip()
                 continue
 
             if not current_mcq:
                 continue
 
+            # --- CONTENT CLASSIFICATION ---
             classification = self._get_classification(block)
-            
-            # Look ahead to see if the next block is a question start
-            is_next_block_question_start = False
-            if i + 1 < len(all_blocks):
-                next_block = all_blocks[i+1]
-                if self._get_analysis(next_block, "question_start", "is_question_start", default=False):
-                    is_next_block_question_start = True
+            content_type = classification.get("type") if classification else "continuation"
 
-            if is_next_block_question_start and current_part != "explanation":
-                current_part = "explanation"
-
-            if not classification:
-                # If no classification, append to the last part
-                if current_part == "question":
-                    current_mcq.question_text += f" {block.text.strip()}"
-                elif current_part == "option" and last_option_key:
-                    current_mcq.options[last_option_key] += f" {block.text.strip()}"
-                elif current_part == "explanation":
-                    current_mcq.explanation += f" {block.text.strip()}"
-                continue
-
-            content_type = classification.get("type")
-
-            if content_type == "question":
-                current_part = "question"
-                current_mcq.question_text += f" {block.text.strip()}"
-
-            elif content_type == "option":
+            # Handle content
+            if content_type == "option":
                 current_part = "option"
-                option_pattern = r'^\(?([abcd])\)?\s+'
+                option_pattern = r'^\(?([a-d])\)?\s+'
                 match = re.match(option_pattern, block.text.strip(), re.IGNORECASE)
                 if match:
                     option_key = match.group(1).lower()
@@ -205,35 +203,27 @@ class StructureAssembler:
                     last_option_key = option_key
                 elif last_option_key:
                     current_mcq.options[last_option_key] += f" {block.text.strip()}"
-
-            elif content_type == "answer":
-                current_part = "explanation"
-                answer_analysis = next((r for r in block.analysis_results if r.get("heuristic_name") == "answer_boundary"), None)
-                if answer_analysis:
-                    current_mcq.answer = answer_analysis.get("answer")
-                    current_mcq.explanation = answer_analysis.get("explanation_text", "")
-
-            elif content_type == "explanation":
-                current_part = "explanation"
-                if current_mcq.explanation is None:
-                    current_mcq.explanation = ""
-                current_mcq.explanation += f" {block.text.strip()}"
             
-            elif content_type == "continuation":
+            else:
+                # Append text to whatever part we are currently in
+                text_content = block.text.strip()
+                
                 if current_part == "question":
-                    current_mcq.question_text += f" {block.text.strip()}"
+                    current_mcq.question_text += f" {text_content}"
                 elif current_part == "option" and last_option_key:
-                    current_mcq.options[last_option_key] += f" {block.text.strip()}"
-                elif current_part == "explanation":
-                    if current_mcq.explanation is None:
-                        current_mcq.explanation = ""
-                    current_mcq.explanation += f" {block.text.strip()}"
+                    current_mcq.options[last_option_key] += f" {text_content}"
+                # We ignore explanation logic for this "Questions Only" parser
 
-
+        # Append last MCQ
         if current_mcq:
             mcqs.append(current_mcq)
 
         final_mcqs = self._merge_mcqs(mcqs)
+        
+        # Final cleanup of spaces
         for mcq in final_mcqs:
             mcq.question_text = ' '.join(mcq.question_text.split())
+            for k, v in mcq.options.items():
+                mcq.options[k] = ' '.join(v.split())
+                
         return final_mcqs

@@ -5,7 +5,8 @@ from qna_orchestrator.qna_heuristics.data_models import Document, Page, TextBloc
 
 class PDFParser:
     def __init__(self, config: Dict):
-        self.config = config["PARSER"]
+        self.full_config = config
+        self.config = config.get("PARSER", {})
 
     def parse(self, pdf_path: str) -> Document:
         doc = fitz.open(pdf_path)
@@ -35,6 +36,10 @@ class PDFParser:
         raw_blocks = page.get_text("dict")["blocks"]
         text_blocks = []
         block_idx = 0
+        
+        # Load noise patterns from config
+        noise_patterns = self.full_config.get("NOISE_PATTERNS", [])
+        
         for b in raw_blocks:
             if "lines" not in b:
                 continue
@@ -50,16 +55,30 @@ class PDFParser:
                             font_name = span.get("font", "Unknown")
 
                     text = line_text.strip()
-                    if text:
-                        text_blocks.append(TextBlock(
-                            id=f"p{page.number + 1}-b{block_idx}",
-                            page_number=page.number + 1,
-                            text=text,
-                            bbox=line["bbox"],
-                            font_size=font_size,
-                            font_name=font_name
-                        ))
-                        block_idx += 1
+                    if not text:
+                        continue
+                    
+                    # --- NOISE FILTERING ---
+                    # Check if text contains any noise pattern (case insensitive)
+                    is_noise = False
+                    for pattern in noise_patterns:
+                        if pattern.lower() in text.lower():
+                            is_noise = True
+                            break
+                    
+                    if is_noise:
+                        continue
+                    # ----------------------------
+                    
+                    text_blocks.append(TextBlock(
+                        id=f"p{page.number + 1}-b{block_idx}",
+                        page_number=page.number + 1,
+                        text=text,
+                        bbox=line["bbox"],
+                        font_size=font_size,
+                        font_name=font_name
+                    ))
+                    block_idx += 1
         # Sort blocks by reading order (top-to-bottom, left-to-right)
         return sorted(text_blocks, key=lambda b: (b.bbox[1], b.bbox[0]))
 

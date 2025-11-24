@@ -9,17 +9,101 @@ DEFAULT_CONFIG = {
     "OUTPUT_DIR": "./output",
     "PDF_PATH": "./data_dir/document.pdf", # Default path, can be overridden
 
-    # List of heuristic functions to apply during the analysis phase
-    # The orchestrator will dynamically import these.
-    "ACTIVE_HEURISTICS": [
-        "qna_orchestrator.qna_heuristics.heuristics.patterns.detect_question_start_enhanced",
-        "qna_orchestrator.qna_heuristics.heuristics.patterns.detect_answer_boundaries",
-        "qna_orchestrator.qna_heuristics.heuristics.patterns.classify_content_type",
-        "qna_orchestrator.qna_heuristics.heuristics.layout.sequence_column_content",
-        "qna_orchestrator.qna_heuristics.heuristics.spacing.analyze_vertical_break",
-        "qna_orchestrator.qna_heuristics.heuristics.layout.analyze_indentation",
-        "qna_orchestrator.qna_heuristics.heuristics.layout.analyze_font_style",
+    # Default parser to use (can be overridden per run)
+    "DEFAULT_PARSER": "vision_ias_questions",
+
+    # Noise patterns to filter out during extraction
+    "NOISE_PATTERNS": [
+        "www.visionias.in",
+        "©Vision IAS",
+        "@iasvault",
+        "Dark horse",
+        "Test Booklet Series",
+        "TEST BOOKLET",
+        "GENERAL STUDIES",
+        "DO NOT OPEN THIS BOOKLET",
+        "INSTRUCTIONS",
+        "IMMEDIATELY AFTER THE COMMENCEMENT",
+        "ENCODE CLEARLY THE TEST BOOKLET SERIES",
+        "You have to enter your Roll Number",
+        "Time Allowed:",
+        "Maximum Marks:",
+        "DOES NOT HAVE ANY UNPRINTED",
+        "GET IT REPLACED"
     ],
+
+    # Parser configurations - each defines a different parser with different heuristics
+    "PARSERS": {
+        "default": {
+            "type": "composable",
+            "extraction": "pymupdf",
+            "layout": "two_column",
+            "analysis": "default"
+        },
+
+        "clustering_enhanced": {
+            "type": "composable",
+            "extraction": "pymupdf",
+            "layout": "two_column",
+            "analysis": "clustering_focused"
+        },
+
+        "minimal": {
+            "type": "composable",
+            "extraction": "pymupdf",
+            "layout": "two_column",
+            "analysis": "minimal_heuristics"
+        },
+
+        "vision_ias_questions": {
+            "type": "heuristic_based",
+            "SKIP_PAGES": [1],  # Skip page 1 (instructions page, 1-indexed)
+            "ACTIVE_HEURISTICS": [
+                # Run Clustering FIRST to establish boundaries
+                "qna_orchestrator.qna_heuristics.heuristics.clustering.detect_cluster_break",
+                "qna_orchestrator.qna_heuristics.heuristics.patterns.detect_question_start_enhanced",
+                "qna_orchestrator.qna_heuristics.heuristics.patterns.classify_content_type",
+                "qna_orchestrator.qna_heuristics.heuristics.layout.sequence_column_content",
+            ]
+        }
+    },
+
+    # Analysis strategies with different heuristic combinations
+    "ANALYSIS_STRATEGIES": {
+        "default": {
+            "ACTIVE_HEURISTICS": [
+                "qna_orchestrator.qna_heuristics.heuristics.patterns.detect_question_start_enhanced",
+                "qna_orchestrator.qna_heuristics.heuristics.patterns.detect_answer_boundaries",
+                "qna_orchestrator.qna_heuristics.heuristics.patterns.classify_content_type",
+                "qna_orchestrator.qna_heuristics.heuristics.layout.sequence_column_content",
+                "qna_orchestrator.qna_heuristics.heuristics.spacing.analyze_vertical_break",
+                "qna_orchestrator.qna_heuristics.heuristics.layout.analyze_indentation",
+                "qna_orchestrator.qna_heuristics.heuristics.layout.analyze_font_style",
+            ]
+        },
+
+        "clustering_focused": {
+            "ACTIVE_HEURISTICS": [
+                "qna_orchestrator.qna_heuristics.heuristics.patterns.detect_question_start_enhanced",
+                "qna_orchestrator.qna_heuristics.heuristics.patterns.detect_answer_boundaries",
+                "qna_orchestrator.qna_heuristics.heuristics.patterns.classify_content_type",
+                # ADD THE NEW HDBSCAN CLUSTERING HEURISTIC HERE:
+                "qna_orchestrator.qna_heuristics.heuristics.clustering.detect_cluster_break",
+                "qna_orchestrator.qna_heuristics.heuristics.layout.sequence_column_content",
+                "qna_orchestrator.qna_heuristics.heuristics.spacing.analyze_vertical_break",
+                "qna_orchestrator.qna_heuristics.heuristics.layout.analyze_indentation",
+                "qna_orchestrator.qna_heuristics.heuristics.layout.analyze_font_style",
+            ]
+        },
+
+        "minimal_heuristics": {
+            "ACTIVE_HEURISTICS": [
+                "qna_orchestrator.qna_heuristics.heuristics.patterns.detect_question_start_enhanced",
+                "qna_orchestrator.qna_heuristics.heuristics.patterns.detect_answer_boundaries",
+                "qna_orchestrator.qna_heuristics.heuristics.patterns.classify_content_type",
+            ]
+        }
+    },
 
     # Parameters for the PDF Parser
     "PARSER": {
@@ -44,9 +128,20 @@ DEFAULT_CONFIG = {
             "INDENTATION_THRESHOLD": 15.0,
         },
         "PATTERNS": {
-            "REGEX_QUESTION": r'^\s*(\d+)\.',
-            "REGEX_OPTION": r'^\s*\(([a-zA-Z])\)',
+            # Strict number pattern for VisionIAS
+            "REGEX_QUESTION": r'^\s*(\d{1,3})\.',
+            "REGEX_OPTION": r'^\s*\(([a-d])\)',
             "REGEX_ANSWER": r'^\s*Ans:\s*\(?([a-d])\)?',
+        },
+
+        # NEW SECTION FOR HDBSCAN CLUSTERING
+        "CLUSTERING": {
+            # Minimum number of samples in a neighbourhood for a point to be a core point
+            "MIN_SAMPLES": 1,
+            # VisionIAS questions are dense (Question + 4 options)
+            # Text blocks can be at word-level, so we need a higher threshold
+            # A typical question has 50-100 words, so min cluster size of 15-20 is reasonable
+            "MIN_CLUSTER_SIZE": 15
         }
     }
 }

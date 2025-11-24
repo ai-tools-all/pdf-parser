@@ -110,6 +110,9 @@ class PyMuPDFExtractor:
         raw_blocks = page.get_text("dict")["blocks"]
         text_blocks = []
         
+        # Load noise patterns from config
+        noise_patterns = self.config.get("NOISE_PATTERNS", [])
+        
         for block in raw_blocks:
             if "lines" not in block:
                 continue
@@ -133,6 +136,18 @@ class PyMuPDFExtractor:
                 text = line_text.strip()
                 if not text:
                     continue
+                
+                # --- NOISE FILTERING ---
+                # Check if text contains any noise pattern (case insensitive)
+                is_noise = False
+                for pattern in noise_patterns:
+                    if pattern.lower() in text.lower():
+                        is_noise = True
+                        break
+                
+                if is_noise:
+                    continue
+                # ----------------------------
                 
                 text_blocks.append(RawTextBlock(
                     text=text,
