@@ -29,7 +29,8 @@ PROFILE = {
         "Time Allowed:",
         "Maximum Marks:",
         "DOES NOT HAVE ANY UNPRINTED",
-        "GET IT REPLACED"
+        "GET IT REPLACED",
+        "www.upscmaterials.online",
     ],
 
     # Sequential parser uses basic signals - Assembler does the heavy lifting
