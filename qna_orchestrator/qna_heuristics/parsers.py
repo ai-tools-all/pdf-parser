@@ -26,12 +26,20 @@ class HeuristicBasedParser(BaseParser):
         """Get list of pages to skip during processing."""
         return self.config.get("SKIP_PAGES")
 
-    def _is_instruction_page(self, page: Page) -> bool:
-        """Check if a page is an instruction page by looking for marker text."""
-        page_text = (page.raw_left_text or "") + " " + (page.raw_right_text or "")
-        for block in page.other_blocks:
-            page_text += " " + block.text
-        return INSTRUCTION_PAGE_MARKER.lower() in page_text.lower()
+    def _is_instruction_page_from_pdf(self, pdf_path: str, page_num: int = 0) -> bool:
+        """Check if a page is an instruction page by reading raw PDF text (before noise filtering)."""
+        import fitz
+        try:
+            doc = fitz.open(pdf_path)
+            if page_num < len(doc):
+                page = doc[page_num]
+                raw_text = page.get_text("text")
+                doc.close()
+                return INSTRUCTION_PAGE_MARKER.lower() in raw_text.lower()
+            doc.close()
+        except Exception:
+            pass
+        return False
 
     def _apply_page_filter(self, doc: Document) -> Document:
         """Filter pages based on SKIP_PAGES and PAGE_RANGE."""
@@ -75,8 +83,7 @@ class HeuristicBasedParser(BaseParser):
 
         # Phase 2: Auto-detect instruction page if page 1 is in SKIP_PAGES
         if self.page_filter and 1 in self.page_filter and doc.pages:
-            page_1 = doc.pages[0]
-            if page_1.page_number == 1 and not self._is_instruction_page(page_1):
+            if not self._is_instruction_page_from_pdf(pdf_path, page_num=0):
                 # Page 1 is NOT an instruction page - don't skip it
                 self.page_filter = [p for p in self.page_filter if p != 1]
 

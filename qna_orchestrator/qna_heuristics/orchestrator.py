@@ -210,6 +210,9 @@ class StructureAssembler:
         expected_q_num = 1
         gate_unlocked = True  # Initially unlocked to find Q1
         
+        # Gap tolerance: how many questions can be skipped due to missing pages
+        max_gap = self.config.get("HEURISTICS", {}).get("MAX_GAP_TOLERANCE", 20)
+        
         # Get regex from config (allows profile-specific tweaks)
         patterns = self.config.get("HEURISTICS", {}).get("PATTERNS", {})
         q_regex = patterns.get("REGEX_QUESTION", r'^\s*(\d{1,3})\.')
@@ -231,8 +234,13 @@ class StructureAssembler:
                 found_num = int(q_match.group(1))
                 
                 # CRITICAL LOGIC: Only accept as new question if gate is unlocked
-                if found_num == expected_q_num and gate_unlocked:
-                    is_new_question = True
+                if gate_unlocked:
+                    if found_num == expected_q_num:
+                        is_new_question = True
+                    # GAP RECOVERY: Accept if within tolerance (handles missing pages)
+                    elif expected_q_num < found_num <= expected_q_num + max_gap:
+                        self.logger.warning(f"Gap detected: expected Q{expected_q_num}, found Q{found_num}. Skipping {found_num - expected_q_num} questions.")
+                        is_new_question = True
 
             # --- PROCESS NEW QUESTION ---
             if is_new_question:
