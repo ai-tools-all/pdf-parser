@@ -145,21 +145,29 @@ class StructureAssembler:
                 return result
         return None
 
+    # Strategy aliases: maps alternate names to canonical method names
+    _STRATEGY_ALIASES = {
+        "forum_gatekeeper": "vision_gatekeeper",  # Forum uses same gatekeeper logic
+    }
+
     def assemble(self, doc: Document) -> List[MCQ]:
         """
-        Dispatcher method that selects the right assembly strategy based on config.
+        Dynamically dispatches to the correct assembly method based on config.
+        Expects methods to be named: _assemble_{strategy_name}
         """
         strategy = self.config.get("ASSEMBLY_STRATEGY", "default")
         
-        if strategy == "vision_gatekeeper":
-            self.logger.info("Using Assembly Strategy: Vision Gatekeeper (Option d Sequential)")
-            return self._assemble_vision_gatekeeper(doc)
-        elif strategy == "vision_solutions":
-            self.logger.info("Using Assembly Strategy: Vision Solutions (Header-Based Extraction)")
-            return self._assemble_vision_solutions(doc)
-        else:
-            self.logger.info("Using Assembly Strategy: Default Sequential")
+        # Resolve aliases
+        resolved_strategy = self._STRATEGY_ALIASES.get(strategy, strategy)
+        method_name = f"_assemble_{resolved_strategy}"
+        
+        if not hasattr(self, method_name):
+            self.logger.error(f"Assembly strategy method '{method_name}' not found! Reverting to default.")
             return self._assemble_default(doc)
+        
+        self.logger.info(f"Executing Assembly Strategy: {strategy}")
+        assembler_func = getattr(self, method_name)
+        return assembler_func(doc)
 
     def _assemble_vision_gatekeeper(self, doc: Document) -> List[MCQ]:
         """
@@ -455,6 +463,84 @@ class StructureAssembler:
                 current_mcq.explanation += f" {text}"
 
         # Save last MCQ
+        if current_mcq:
+            mcqs.append(current_mcq)
+
+        return self._post_process_solutions(mcqs)
+
+    def _assemble_forum_solutions(self, doc: Document) -> List[MCQ]:
+        """
+        ForumIAS Solutions Strategy:
+        Parses solution PDFs with structure:
+           Q.1)
+           Ans) d
+           Exp) Option d is correct...
+        """
+        mcqs = []
+        all_blocks = []
+        
+        # Flatten blocks (Top-to-bottom flow)
+        for page in doc.pages:
+            page_blocks = page.left_column_blocks + page.right_column_blocks + page.other_blocks
+            all_blocks.extend(sorted(page_blocks, key=lambda b: (b.bbox[1], b.bbox[0])))
+
+        # Load Regex patterns from config
+        patterns = self.config.get("HEURISTICS", {}).get("PATTERNS", {})
+        
+        re_header = re.compile(patterns.get("REGEX_SOLUTION_HEADER", r'^\s*Q\.?\s*(\d+)\)'), re.IGNORECASE)
+        re_ans = re.compile(patterns.get("REGEX_ANSWER_LINE", r'^\s*Ans\)\s*([a-d])'), re.IGNORECASE)
+        re_exp = re.compile(patterns.get("REGEX_EXPLANATION_START", r'^\s*Exp\)'), re.IGNORECASE)
+        
+        current_mcq = None
+        capture_explanation = False
+
+        for block in all_blocks:
+            text = block.text.strip()
+            if not text:
+                continue
+
+            # Case 1: New Question Header "Q.1)"
+            q_match = re_header.match(text)
+            if q_match:
+                if current_mcq:
+                    mcqs.append(current_mcq)
+                
+                q_num = int(q_match.group(1))
+                current_mcq = MCQ(
+                    question_number=q_num,
+                    question_text="",
+                    options={},
+                    answer=None,
+                    explanation=""
+                )
+                capture_explanation = False
+                continue
+
+            if not current_mcq:
+                continue
+
+            # Case 2: Answer Line "Ans) d"
+            ans_match = re_ans.match(text)
+            if ans_match:
+                current_mcq.answer = ans_match.group(1).lower()
+                continue
+
+            # Case 3: Explanation Start "Exp)"
+            exp_match = re_exp.match(text)
+            if exp_match:
+                capture_explanation = True
+                cleaned = re_exp.sub('', text).strip()
+                if cleaned:
+                    current_mcq.explanation = cleaned
+                continue
+
+            # Case 4: Explanation Content
+            if capture_explanation:
+                if current_mcq.explanation:
+                    current_mcq.explanation += " " + text
+                else:
+                    current_mcq.explanation = text
+
         if current_mcq:
             mcqs.append(current_mcq)
 
