@@ -131,99 +131,244 @@ class StructureAssembler:
 
     def assemble(self, doc: Document) -> List[MCQ]:
         """
-        Assembles MCQs using hybrid signal: Cluster Break + Question Number Pattern.
-        This ensures accurate question boundaries for VisionIAS format.
+        Dispatcher method that selects the right assembly strategy based on config.
+        """
+        strategy = self.config.get("ASSEMBLY_STRATEGY", "default")
+        
+        if strategy == "vision_gatekeeper":
+            print("Using Assembly Strategy: Vision Gatekeeper (Option d Sequential)")
+            return self._assemble_vision_gatekeeper(doc)
+        else:
+            print("Using Assembly Strategy: Default Sequential")
+            return self._assemble_default(doc)
+
+    def _assemble_vision_gatekeeper(self, doc: Document) -> List[MCQ]:
+        """
+        Vision IAS Gatekeeper Strategy:
+        Uses Option (d) as the "gate" to determine when a new question can start.
+        
+        Logic:
+        - Gate starts UNLOCKED (to find Q1)
+        - When we find a valid question number, LOCK the gate
+        - Numbers found while LOCKED are treated as content (e.g., numbered statements)
+        - When we see option (d), UNLOCK the gate
+        - Next valid number with UNLOCKED gate starts new question
+        
+        This prevents false positives from numbered statements inside questions.
         """
         mcqs = []
         all_blocks = []
         
-        # Flatten blocks in reading order
+        # 1. Flatten blocks in reading order
+        #    For Vision IAS: process other_blocks by assigning to appropriate column
         for page in doc.pages:
-            all_blocks.extend(sorted(page.left_column_blocks, key=lambda b: b.bbox[1]))
-            all_blocks.extend(sorted(page.right_column_blocks, key=lambda b: b.bbox[1]))
+            # Calculate page midpoint to determine left vs right column
+            page_mid_x = page.page_width / 2 if page.page_width else 300
+            
+            # Assign other_blocks to appropriate columns based on X position
+            left_blocks = list(page.left_column_blocks)
+            right_blocks = list(page.right_column_blocks)
+            
+            for block in page.other_blocks:
+                block_center_x = (block.bbox[0] + block.bbox[2]) / 2
+                if block_center_x < page_mid_x:
+                    left_blocks.append(block)
+                else:
+                    right_blocks.append(block)
+            
+            # Sort each column by Y position (top to bottom)
+            left = sorted(left_blocks, key=lambda b: b.bbox[1])
+            right = sorted(right_blocks, key=lambda b: b.bbox[1])
+            
+            # Reading order: left column first, then right column
+            all_blocks.extend(left + right)
 
+        # 2. State Machine Variables
         current_mcq = None
-        current_part = None
+        current_part = "question"  # 'question' or 'option'
         last_option_key = None
+        
+        expected_q_num = 1
+        gate_unlocked = True  # Initially unlocked to find Q1
+        
+        # Get regex from config (allows profile-specific tweaks)
+        patterns = self.config.get("HEURISTICS", {}).get("PATTERNS", {})
+        q_regex = patterns.get("REGEX_QUESTION", r'^\s*(\d{1,3})\.')
+        opt_regex = patterns.get("REGEX_OPTION", r'^\s*\(([a-d])\)')
+        
+        q_num_pattern = re.compile(q_regex)
+        option_pattern = re.compile(opt_regex, re.IGNORECASE)
 
-        for i, block in enumerate(all_blocks):
-            
-            # --- EXTRACT ANALYSIS SIGNALS ---
-            # 1. Question Start (Regex)
-            q_start_res = self._get_analysis(block, "question_start", "is_question_start", default=False)
-            q_num_extracted = self._get_analysis(block, "question_start", "question_number")
-            
-            # 2. Cluster Break (HDBSCAN)
-            cluster_res = None
-            for r in block.analysis_results:
-                if r.get("heuristic_name") == "hdbscan_clustering":
-                    cluster_res = r
-                    break
-            
-            is_new_cluster = cluster_res.get("is_new_cluster", False) if cluster_res else False
-            
-            # --- DECISION LOGIC ---
-            
-            # It is a new question if:
-            # A) It's a new cluster AND looks like a number "1." (Strongest Signal)
-            # B) It's the very first block and looks like a number (Start of doc)
-            is_valid_start = (is_new_cluster and q_start_res) or (current_mcq is None and q_start_res)
+        for block in all_blocks:
+            text = block.text.strip()
+            if not text:
+                continue
 
-            if is_valid_start:
+            # --- CHECK FOR QUESTION START ---
+            q_match = q_num_pattern.match(text)
+            is_new_question = False
+            
+            if q_match:
+                found_num = int(q_match.group(1))
+                
+                # CRITICAL LOGIC: Only accept as new question if gate is unlocked
+                if found_num == expected_q_num and gate_unlocked:
+                    is_new_question = True
+
+            # --- PROCESS NEW QUESTION ---
+            if is_new_question:
+                # Save previous MCQ
+                if current_mcq:
+                    mcqs.append(current_mcq)
+                
+                # Start new MCQ
+                current_mcq = MCQ(question_number=found_num, question_text="")
+                current_part = "question"
+                last_option_key = None
+                
+                # Clean text (remove "1." prefix)
+                clean_text = q_num_pattern.sub('', text, count=1).strip()
+                if clean_text:
+                    current_mcq.question_text = clean_text
+                
+                # Update state
+                expected_q_num += 1
+                gate_unlocked = False  # LOCK THE GATE until we see (d)
+                continue
+
+            # Skip blocks until we find Q1
+            if not current_mcq:
+                continue
+
+            # --- PROCESS OPTIONS & CONTENT ---
+            opt_match = option_pattern.match(text)
+            
+            if opt_match:
+                # Found an option (a), (b), (c), or (d)
+                opt_key = opt_match.group(1).lower()
+                current_part = "option"
+                last_option_key = opt_key
+                
+                # Extract text after "(a)"
+                clean_text = option_pattern.sub('', text, count=1).strip()
+                current_mcq.options[opt_key] = clean_text
+
+                # UNLOCK GATE when we see option (d)
+                if opt_key == 'd':
+                    gate_unlocked = True
+
+            else:
+                # Continuation text
+                if current_part == "question":
+                    current_mcq.question_text += " " + text
+                elif current_part == "option" and last_option_key:
+                    current_mcq.options[last_option_key] += " " + text
+
+        # Save last MCQ
+        if current_mcq:
+            mcqs.append(current_mcq)
+
+        return self._post_process_mcqs(mcqs)
+
+    def _assemble_default(self, doc: Document) -> List[MCQ]:
+        """
+        Default Sequential State Machine approach.
+        Tracks expected question number and advances on strict sequence match.
+        """
+        mcqs = []
+        
+        # 1. Flatten all blocks in strictly sorted order
+        all_blocks = []
+        for page in doc.pages:
+            left = sorted(page.left_column_blocks, key=lambda b: b.bbox[1])
+            right = sorted(page.right_column_blocks, key=lambda b: b.bbox[1])
+            all_blocks.extend(left + right)
+
+        # 2. Initialize State Machine
+        current_mcq = None
+        current_part = None      # 'question', 'option'
+        last_option_key = None
+        
+        expected_q_num = 1       # We start looking for Q1
+        
+        # Regex for finding "1." "2." etc.
+        q_num_pattern = re.compile(r'^\s*(\d{1,3})\.') 
+
+        for block in all_blocks:
+            text = block.text.strip()
+            
+            # --- CHECK FOR QUESTION START ---
+            match = q_num_pattern.match(text)
+            is_question_start = False
+            found_num = -1
+
+            if match:
+                found_num = int(match.group(1))
+                
+                # LOGIC: Is this the number we are looking for?
+                if found_num == expected_q_num:
+                    is_question_start = True
+                
+                # GAP RECOVERY: Did we miss one? (e.g. looking for 6, found 7)
+                elif found_num == expected_q_num + 1:
+                    print(f"⚠️  Warning: Missed Question {expected_q_num}, jumping to {found_num}")
+                    expected_q_num = found_num # Sync up
+                    is_question_start = True
+            
+            # --- PROCESS BLOCK ---
+            
+            if is_question_start:
                 # Save previous
                 if current_mcq:
                     mcqs.append(current_mcq)
                 
-                # Create New
-                current_mcq = MCQ(question_number=int(q_num_extracted), question_text="")
+                # Start New
+                current_mcq = MCQ(question_number=found_num, question_text="")
                 current_part = "question"
                 last_option_key = None
+                expected_q_num += 1
                 
-                # Remove number from text (e.g., "1. Question..." -> "Question...")
-                text_to_add = re.sub(r'^\s*\d+\.\s*', '', block.text, 1)
-                current_mcq.question_text = text_to_add.strip()
+                # Remove the number "55." from the text
+                cleaned_text = q_num_pattern.sub('', text).strip()
+                
+                if cleaned_text:
+                    current_mcq.question_text = cleaned_text
                 continue
 
+            # If we haven't found Q1 yet, skip everything
             if not current_mcq:
                 continue
 
-            # --- CONTENT CLASSIFICATION ---
-            classification = self._get_classification(block)
-            content_type = classification.get("type") if classification else "continuation"
-
-            # Handle content
-            if content_type == "option":
+            # --- CONTENT PARSING (for current MCQ) ---
+            
+            # Check for Options (a), (b)...
+            option_match = re.match(r'^\(?([a-d])\)?\s+', text, re.IGNORECASE)
+            
+            if option_match:
                 current_part = "option"
-                option_pattern = r'^\(?([a-d])\)?\s+'
-                match = re.match(option_pattern, block.text.strip(), re.IGNORECASE)
-                if match:
-                    option_key = match.group(1).lower()
-                    text_to_add = re.sub(option_pattern, '', block.text, 1)
-                    current_mcq.options[option_key] = text_to_add.strip()
-                    last_option_key = option_key
-                elif last_option_key:
-                    current_mcq.options[last_option_key] += f" {block.text.strip()}"
+                option_key = option_match.group(1).lower()
+                cleaned_text = re.sub(r'^\(?([a-d])\)?\s+', '', text, count=1, flags=re.IGNORECASE).strip()
+                
+                current_mcq.options[option_key] = cleaned_text
+                last_option_key = option_key
             
             else:
-                # Append text to whatever part we are currently in
-                text_content = block.text.strip()
-                
+                # Continuation of whatever we were doing
                 if current_part == "question":
-                    current_mcq.question_text += f" {text_content}"
+                    current_mcq.question_text += f" {text}"
                 elif current_part == "option" and last_option_key:
-                    current_mcq.options[last_option_key] += f" {text_content}"
-                # We ignore explanation logic for this "Questions Only" parser
+                    current_mcq.options[last_option_key] += f" {text}"
 
-        # Append last MCQ
+        # Save the last one
         if current_mcq:
             mcqs.append(current_mcq)
 
-        final_mcqs = self._merge_mcqs(mcqs)
-        
-        # Final cleanup of spaces
-        for mcq in final_mcqs:
+        return self._post_process_mcqs(mcqs)
+
+    def _post_process_mcqs(self, mcqs):
+        """Helper to clean up extra spaces"""
+        for mcq in mcqs:
             mcq.question_text = ' '.join(mcq.question_text.split())
             for k, v in mcq.options.items():
                 mcq.options[k] = ' '.join(v.split())
-                
-        return final_mcqs
+        return mcqs
