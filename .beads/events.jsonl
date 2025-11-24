@@ -19,3 +19,6 @@
 {"event_id":"01KAVPVD04B7FAD6SMCK3MRAN8","ts":"2025-11-24T19:53:31.396Z","op":"update","id":"pp-008","actor":"abhishek","data":{"status":"in_progress"}}
 {"event_id":"01KAVQ1HR5DTP6KF0F4K5SF75E","ts":"2025-11-24T19:56:52.869Z","op":"update","id":"pp-007","actor":"abhishek","data":{"status":"done"}}
 {"event_id":"01KAVQ5RXQ3CZFWTYJDZFN703N","ts":"2025-11-24T19:59:11.287Z","op":"update","id":"pp-008","actor":"abhishek","data":{"status":"done"}}
+{"event_id":"01KAVRKA2MFR7RN6TVFP7VV19N","ts":"2025-11-24T20:24:03.412Z","op":"create","id":"pp-009","actor":"abhishek","data":{"description":"The vision_ias_questions profile skips page 1 assuming it contains instructions. However, some PDFs (e.g., VP_TEST-14) have questions starting on page 1. Need to auto-detect whether first page is instructions or actual questions to avoid missing Q1-Q8.","priority":1,"status":"open","title":"Auto-detect instruction page vs question page on first page"}}
+{"event_id":"01KAVRPEZ6Y2HFBRF5J89NYM2W","ts":"2025-11-24T20:25:46.726Z","op":"update","id":"pp-009","actor":"abhishek","data":{"status":"in_progress"}}
+{"event_id":"01KAVRR7HXRG5Z652A5A8YFC3F","ts":"2025-11-24T20:26:44.669Z","op":"update","id":"pp-009","actor":"abhishek","data":{"status":"closed"}}

@@ -5,6 +5,9 @@ from qna_orchestrator.qna_heuristics.pdf_parser import PDFParser
 import statistics
 import importlib
 
+# Marker text found on Vision IAS instruction pages
+INSTRUCTION_PAGE_MARKER = "IMMEDIATELY AFTER THE COMMENCEMENT OF THE EXAMINATION"
+
 class HeuristicBasedParser(BaseParser):
     """
     A parser that combines PDF text extraction with configurable heuristics.
@@ -22,6 +25,13 @@ class HeuristicBasedParser(BaseParser):
     def _get_page_filter(self) -> Optional[List[int]]:
         """Get list of pages to skip during processing."""
         return self.config.get("SKIP_PAGES")
+
+    def _is_instruction_page(self, page: Page) -> bool:
+        """Check if a page is an instruction page by looking for marker text."""
+        page_text = (page.raw_left_text or "") + " " + (page.raw_right_text or "")
+        for block in page.other_blocks:
+            page_text += " " + block.text
+        return INSTRUCTION_PAGE_MARKER.lower() in page_text.lower()
 
     def _apply_page_filter(self, doc: Document) -> Document:
         """Filter pages based on SKIP_PAGES and PAGE_RANGE."""
@@ -63,11 +73,18 @@ class HeuristicBasedParser(BaseParser):
         # Phase 1: Extract text blocks
         doc = self.pdf_parser.parse(pdf_path)
 
-        # Phase 2: Apply page filtering if configured
+        # Phase 2: Auto-detect instruction page if page 1 is in SKIP_PAGES
+        if self.page_filter and 1 in self.page_filter and doc.pages:
+            page_1 = doc.pages[0]
+            if page_1.page_number == 1 and not self._is_instruction_page(page_1):
+                # Page 1 is NOT an instruction page - don't skip it
+                self.page_filter = [p for p in self.page_filter if p != 1]
+
+        # Phase 3: Apply page filtering if configured
         if self.page_filter:
             doc = self._apply_page_filter(doc)
 
-        # Phase 3: Apply heuristics to analyze content
+        # Phase 4: Apply heuristics to analyze content
         analyzed_doc = self._apply_heuristics(doc)
 
         return analyzed_doc
